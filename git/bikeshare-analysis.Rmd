@@ -308,7 +308,7 @@ library(rstudioapi)
 install.packages("ggmap")
 library(ggmap)
 
-register_google(key = "AIzaSyBn_zK5VR2wVX7BQy_-k3r3qCyy3JkuZnM")
+register_google(key = "insert key here")
 ```
 
 ## Comparing areas of casual and member rides
@@ -939,7 +939,7 @@ Ev_nocollege is a weird zone with a density graph that does not match the others
 
 Making a heatmap of the Evanston area
 ```{r}
-register_google(key = "AIzaSyBn_zK5VR2wVX7BQy_-k3r3qCyy3JkuZnM")
+register_google(key = "insert key here")
 
 EV_map <- get_googlemap(center = c(lon = -87.6933607, lat = 42.0473459),
                       zoom = 14,
@@ -1331,7 +1331,7 @@ bikeshare_fv2 %>%
 
 How did I make the Ev_nocollege and Ev_NW_College categories?
 ```{r}
-register_google(key = "AIzaSyBn_zK5VR2wVX7BQy_-k3r3qCyy3JkuZnM")
+register_google(key = "insert key here")
 
 
 Evanston <- bikeshare_fv2 %>%
