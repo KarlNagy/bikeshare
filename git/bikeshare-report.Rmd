@@ -24,6 +24,8 @@ install.packages("pwr", repos='http://cran.us.r-project.org')
 library(pwr)
 install.packages("hrbrthemes", repos='http://cran.us.r-project.org')
 library(hrbrthemes)
+install.packages("googledrive")
+library(googledrive)
 ```
 
 # Key Questions
@@ -145,8 +147,36 @@ End product: bikeshare_v4.csv
  * `Z2_nocollege`  - Out to Indiana state line in the East - (-87.524491 lng)
                    - W Howard St. in the North - (42.0219536 lat)
                    - excludes `Z1` and `Hyde_Park`
+
+### bikeshare_v17
+* Removed: `ride_length_dur`, unnecessary 
 ```{r}
-load("G:/My Drive/Project Support/data-analysis-projects/bikeshare/git-repo/minimal-report-workspace.RData")
+
+drive_download(
+  as_id("1fj4ej6PRn4VdNn7W45rQmTfb6Gs6Sx5g"), type = "csv",overwrite = TRUE)
+bikeshare_test <- read_csv("bikeshare_v16.csv", 
+    col_types = cols(
+     ride_id = col_character(),
+     member_casual = col_character(),
+     rideable_type = col_character(),
+     started_at = col_datetime(),
+     ended_at = col_datetime(),
+     day_of_week = col_double(),
+     start_station_name = col_character(),
+     start_station_id = col_character(),
+     end_station_name = col_character(),
+     end_station_id = col_character(),
+     start_lat = col_double(),
+     start_lng = col_double(),
+     end_lat = col_double(),
+     end_lng = col_double(),
+     ride_length_dur = as.duration(col_character()),
+     ride_length_min = col_double(),
+     area = col_character(),
+     ride_ml = col_double(),
+     speed_mph = col_double()))
+str(bikeshare_test)
+str(bikeshare_v16)
 ```
 
 

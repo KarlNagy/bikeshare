@@ -1518,6 +1518,14 @@ filter(ride_length_min < 46.4,
   relocate(group_freq, .after = group_count)
 ```
 
+Removing `ride_length_dur`
+```{r}
+bikeshare_v17 <- bikeshare_v16 %>%
+  select( -c(ride_length_dur))
+
+write_csv(bikeshare_v17, "Data/bikeshare_v17.csv")
+```
+
 ## Final Conclusions
 Casuals and members differ in several ways
 * members ride during weekdays more than casuals
