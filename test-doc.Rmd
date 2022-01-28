@@ -1,7 +1,0 @@
----
-title: "test"
-author: "Karl Nagy"
-date: "1/26/2022"
-output: github_document
----
-I code things
