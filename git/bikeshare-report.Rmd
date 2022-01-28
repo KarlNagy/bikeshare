@@ -2,14 +2,14 @@
 title: "bikeshare-report"
 author: "Karl Nagy"
 date: "01/24/2021"
-output:
-  html_document: default
-  pdf_document: default
+output: github_document
 ---
-
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE,error = FALSE, echo = FALSE) 
+```
 ## Packages Used
 The following were used when in R
-```{r}
+```{r include=FALSE}
 install.packages("tidyverse", repos='http://cran.us.r-project.org')
 library(tidyverse)
 library(purrr)
@@ -24,7 +24,7 @@ install.packages("pwr", repos='http://cran.us.r-project.org')
 library(pwr)
 install.packages("hrbrthemes", repos='http://cran.us.r-project.org')
 library(hrbrthemes)
-install.packages("googledrive")
+install.packages("googledrive", repos='http://cran.us.r-project.org')
 library(googledrive)
 ```
 
@@ -33,7 +33,8 @@ library(googledrive)
 * How can casual riders be converted to annual members to drive future growth?
 
 # Summary
-Casuals and members differ in several ways
+Casuals and members differ in several ways  
+
 * members ride during weekdays more than casuals
 * member riding behavior is less seasonal than casuals
 * members and casuals bike similar distances
@@ -43,9 +44,9 @@ These differences in behavior have implications for a marketing campaign attempt
 
 # Data Sources and Security
 
-Historical bikeshare use dataset obtained from *Divvy*, a Chicago-based company
-[Data Source Here](https://divvy-tripdata.s3.amazonaws.com/index.html)
-Google cloud used for storage of all files
+Historical bikeshare use [dataset](https://divvy-tripdata.s3.amazonaws.com/index.html) obtained from *Divvy*, a Chicago-based bikeshare company  
+
+Google drive used for storage of all files
 
 # Data Cleaning and Manipulation
 Initial cleaning and manipulation was done in BigQuery SQL editor, then transferred to R.
@@ -59,9 +60,9 @@ Initial cleaning and manipulation was done in BigQuery SQL editor, then transfer
 * 2020.10 and 2020.11 tables use integer values for `start_station_id` and `end_station_id` columns, changed to string values to match the other tables
 
 ###  Fixed
-* removed rows where `started_at` occurred after `ended_at`, which caused duplicate rows
+* removed rows where `started_at` occurred after `ended_at`
 
-End product: bikeshare_v4.csv
+**End product:** bikeshare_v4.csv
 
 
 ## Data Cleaning and Wrangling in R
@@ -86,7 +87,7 @@ End product: bikeshare_v4.csv
 * Fixed: removed outlier rows with a `ride_length_dur` longer than 1440 minutes(1 day) or shorter than 30 seconds
 
 ### bikeshare_v11
-* Added: `area` column, with "Hyde_Park", "Evanston", "Z1", and "Z2" "noncluster" categories by setting boundaries of  `start_lat' and `start_lng` values, based on [this](https://account.divvybikes.com/map) and interpreted below
+* Added: `area` column with "Hyde_Park", "Evanston", "Z1", "Z2", and "noncluster" categories by setting boundaries of  `start_lat` and `start_lng` values, based on [Divvy's Zone classification](https://account.divvybikes.com/map) and interpreted below
 
                   Z1:  start_lat > 41.822978 & start_lat < 42.0219536 & start_lng > -87.690118 & start_lng < -87.593127
                           
@@ -99,7 +100,7 @@ End product: bikeshare_v4.csv
 
 
 ### bikeshare_v12
-* Removed: "noncluster" examined and found to be 44 rows outside of Zone 2
+* Removed: examined "noncluster" rows and found them to be 44 rows outside of Zone 2 boundaries
 
 ### bikeshare_v13
 * Fixed: removed rows less than 1 minute, in keeping with Divvy's policy on their data
@@ -124,7 +125,9 @@ End product: bikeshare_v4.csv
     The E_nocollege includes a section that technically is part of Z1, a 2x4 block section just south of Cavalry Catholic Cemetery
 
 ### bikeshare_v16
-*Fixed: readjusted Hyde_Park boundaries to specific streets
+* Changed: `E_nocollege` > `Ev_nocollege`
+           `E_NWU` > `Ev_NW_College`
+* Fixed: readjusted Hyde_Park boundaries to specific streets
              
  * `Hyde_Park`     - E. 63rd St. in the South - (41.780428 lat)
                    - S. Martin Luther King Dr. in the West - (-87.615707 lng)
@@ -149,12 +152,12 @@ End product: bikeshare_v4.csv
                    - excludes `Z1` and `Hyde_Park`
 
 ### bikeshare_v17
-* Removed: `ride_length_dur`, unnecessary 
+* Removed: `ride_length_dur` wass no longer needed 
 ```{r}
 
 drive_download(
-  as_id("1fj4ej6PRn4VdNn7W45rQmTfb6Gs6Sx5g"), type = "csv",overwrite = TRUE)
-bikeshare_test <- read_csv("bikeshare_v16.csv", 
+  as_id("1ZiEa7xBAaW0IXlQh97FCYMYOdkRuHL6u"),overwrite = TRUE) ## requires google account for use
+bikeshare_v17 <- read_csv("bikeshare_v17.csv", 
     col_types = cols(
      ride_id = col_character(),
      member_casual = col_character(),
@@ -170,20 +173,17 @@ bikeshare_test <- read_csv("bikeshare_v16.csv",
      start_lng = col_double(),
      end_lat = col_double(),
      end_lng = col_double(),
-     ride_length_dur = as.duration(col_character()),
      ride_length_min = col_double(),
      area = col_character(),
      ride_ml = col_double(),
      speed_mph = col_double()))
-str(bikeshare_test)
-str(bikeshare_v16)
 ```
 
 
 
 ### Weekday Bike Use
 ```{r}
-bikeshare_v16 %>%
+bikeshare_v17 %>%
   mutate(day_name = case_when(day_of_week == 1 ~ "Su",
                               day_of_week == 2 ~ "M",
                               day_of_week == 3 ~ "T",
@@ -220,11 +220,12 @@ ggplot(aes(x=day_name_2,
 
 ```
 
-Members use bikes more during the weekday than casuals, who prefer the weekend. This is likely due to members using the bikes for work/school, and casuals for pleasure. The trend is especially prominent in the Hyde_park cluster around the university campus, where students have reason not only for home-work-home transit, but multiple short trips from class to class, nearby restaurants, and study locations. It is worth mentioning that without individual data to confirm how many trips per person are taken per day or more detailed individual information to confirm a lifestyle pattern, this hypothesis can only go so far.
+Members use bikes more during the weekday than casuals, who prefer the weekend. This is likely due to members using the bikes for work/school, and casuals for pleasure. The trend is especially prominent in the 'Hyde_park` cluster around the university campus, where students have reason not only for home-work-home transit, but multiple short trips from class to class, nearby restaurants, and study locations. It is worth mentioning that without individual data to confirm how many trips per person are taken per day or more detailed individual information to confirm a lifestyle pattern, this hypothesis can only go so far.
+
 
 ### Seasonal Bike Use
 ```{r}
-bikeshare_v16 %>%
+bikeshare_v17 %>%
         
 ggplot(aes(x = started_at,
            fill = member_casual)) +
@@ -244,7 +245,8 @@ ggplot(aes(x = started_at,
 
 Chicago winters are harsh, and total rides across both members and casuals show this; Rides decrease outside of temperate months and increase when weather is pleasant. Anecdotal observation of recorded temperatures show that total rides drop harshly when the maximum temperature reaches freezing or below, likely the bitter cold makes biking less attractive. During Jan. 26 - Feb. 15 for example, Chicago had a record 34 in. of snow, which corresponds to the lowest point of ride density.
 
-Though both members and casuals are affected by the seasons, members have less of a ride increase than casuals in temperate months, and less of a ride decrease in colder months. This year-round level behavior taken with the weekday use pattern seems to suggest a clear theme: members ride for function, casuals ride for pleasure, and bike riding as a whole is seasonal.
+Though both members and casuals are affected by the seasons, members have less of a ride *increase* than casuals in temperate months, and less of a ride *decrease* in colder months. This more level yearly behavior taken with the weekday use pattern seems to suggest a clear theme: members ride for function, casuals ride for pleasure, and bike riding as a whole is seasonal.
+
 
 ### Distance, speed, and ride time
 ```{r}
@@ -254,7 +256,7 @@ fun_peak <- function(x) { ## this function finds the corresponding x value for a
   }
 
 
-bikeshare_v16 %>%
+bikeshare_v17 %>%
   filter(ride_length_min < 46.618) %>% ## 92.6% of all rows, outliers eliminated through IQR method
   
 ggplot(aes(x = ride_length_min,
@@ -271,7 +273,7 @@ ggplot(aes(x = ride_length_min,
        caption = "Data: Oct-2020 to Oct-2021") +
   theme_ipsum()
 
-bikeshare_v16%>%
+bikeshare_v17 %>%
   filter(ride_length_min < 46.618,
          ride_ml != 0) %>% ## 92.6% of all rows, outliers eliminated through IQR method
   
@@ -284,14 +286,14 @@ ggplot(aes(x = speed_mph,
                      breaks = NULL) +
   scale_x_continuous(limits = c(0,20)) +
   scale_fill_discrete(name = "") +
-  labs(title = "Speed",
+  labs(title = "Average Speed",
        subtitle = "Members go faster than Casuals",
        x = "MpH",
        y = element_blank(),
        caption = "Data: Oct-2020 to Oct-2021") +
   theme_ipsum()
 
-bikeshare_v16 %>%
+bikeshare_v17 %>%
   filter(ride_length_min < 46.618,
          ride_ml != 0) %>% ## 92.6% of all rows, outliers eliminated through IQR method
   
@@ -319,11 +321,12 @@ ggplot(aes(x = ride_ml,
 
 Members and Casuals tend to cover a similar distance, though Members tend to shorten their ride by going faster than Casuals.
 
-Considering that bikes compete with walking, electric scooters, public transportation, and automobile use, longer or shorter distances probably see potential riders consider using an alternative means of transport instead. The sweet spot for Divvy biking distance seems to be within the 0.75-1.5 mile range.
+Considering that Chicago bikeshare rides compete with walking, electric scooters, public transportation, and automobile use, longer or shorter distances further from the *peak of 0.75 to 1.5mi.* may cause potential riders to use an alternative means of transport instead. 
+
 
 ### Rideable type use
 ```{r}
-bikeshare_v16 %>%                                      
+bikeshare_v17 %>%                                      
   filter(ride_length_min < 46.4) %>%
   group_by(member_casual) %>%
   summarise(ebike_rate = sum(rideable_type == "electric_bike")/n(),
@@ -346,12 +349,12 @@ ggplot(aes(x = member_casual,
   theme_ipsum()
 
 
-bikeshare_v16 %>%                                     
+bikeshare_v17 %>%                                     
   filter(ride_length_min < 46.4,
          ride_ml != 0) %>%
-  mutate(area_grouped = case_when(area == "E_nocollege" ~ "Z1",   ## Z1 and Z2 together to check price
+  mutate(area_grouped = case_when(area == "Ev_nocollege" ~ "Z1",   ## Z1 and Z2 together to check price
                                   area == "Z1" ~ "Z1",
-                                  area == "E_NWU" ~ "Z1",
+                                  area == "Ev_NW_College" ~ "Z1",
                                   area == "Z2_nocollege" ~ "Z2",
                                   area == "Hyde_Park" ~ "Z2")) %>%
   group_by(area_grouped,member_casual) %>%
@@ -374,7 +377,7 @@ ggplot(aes(x = area_grouped,
   scale_x_discrete("") +
   scale_fill_discrete(name = "") +
   labs(title = "Zone 2 loves E-bikes",
-       subtitle = "Membership has a smaller effect on e-bike usage than Zone",
+       subtitle = "Zone has a huge effect on e-bike usage, membership less so",
        caption = "Data: Oct-2020 to Oct-2021") +
   theme_ipsum() 
 
@@ -382,6 +385,7 @@ ggplot(aes(x = area_grouped,
 
 E-bike vs. classic bike use is not about the absolute cost, but the relative cost of using the other mode of transport. Consider the example the cost of a six minute e-bike ride in each zone, with the bike being returned to a dock, for a member or a casual, contrasted with the classic bike alternative cost:
 
+|Z1/Casual
 Z1/Casual: 3.30 + 1.20 =    4.50
 classic alternative =       3.30
 
