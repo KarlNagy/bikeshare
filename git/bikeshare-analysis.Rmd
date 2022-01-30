@@ -1530,7 +1530,8 @@ Comparing `ride_ml` by rideable type
 bikeshare_v17 %>%
   filter(ride_ml != 0) %>%
   group_by(rideable_type) %>%
-  summarise(mean_ml = mean(ride_ml))
+  summarise(mean_ml = mean(ride_ml)) %>%
+  mutate(percent = percent(mean_ml/mean_ml[rideable_type == "classic_bike"]))
 
 
 ```
