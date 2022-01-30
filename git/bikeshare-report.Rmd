@@ -26,6 +26,8 @@ install.packages("hrbrthemes", repos='http://cran.us.r-project.org')
 library(hrbrthemes)
 install.packages("googledrive", repos='http://cran.us.r-project.org')
 library(googledrive)
+install.packages("kableExtra", repos='http://cran.us.r-project.org')
+library(kableExtra)
 ```
 
 # Key Questions
@@ -385,22 +387,29 @@ ggplot(aes(x = area_grouped,
 
 E-bike vs. classic bike use is not about the absolute cost, but the relative cost of using the other mode of transport. Consider the example the cost of a six minute e-bike ride in each zone, with the bike being returned to a dock, for a member or a casual, contrasted with the classic bike alternative cost:
 
-|Z1/Casual
-Z1/Casual: 3.30 + 1.20 =    4.50
-classic alternative =       3.30
+```{r}
 
-Z1/Member: none + 0.90 =    0.90
-classic alternative =       0.00
+rideable <- c("E-bike","Classic")
+Z1_Casual <- c("$4.50","$3.30")
+Z1_Member <- c("$0.90","$0.00")
+Z2_Casual <- c("$3.30","$3.30")
+Z2_Member <- c("$0.00","$0.00")
 
-Z2/Casual: 3.30 + none =    3.30
-classic alternative =       3.30
+comparison <- data.frame(rideable,Z1_Casual,Z1_Member,Z2_Casual,Z2_Member)
 
-Z2/Member: none + none =    0.00
-classic alternative =       0.00  
+comparison %>%
+  select(rideable,everything()) %>%
+  arrange(desc(rideable)) %>%
+  kable(col.names = c("","Casual","Member","Casual","Member")) %>%
+  column_spec(c(1:5), border_right = T) %>%
+  kable_styling(bootstrap_options = "striped", full_width = FALSE) %>%
+  collapse_rows(columns = 1) %>%
+    add_header_above(c(" " = 1, "Z1" = 2, "Z2" = 2))
+```
 
 Z2 riders have no cost difference between an electric or classic bike, and so use the higher end option of e-bikes more frequently. Z1 riders may decide to take a bike ride, and having locked in that decision now consider cost, find e-bikes too expensive, and take a classic bike instead.
 
-Z1 members receive a strong discount on e-bike use when compared with Z1 casuals, but still use e-bikes less. This could be that members take more bike rides per-week, and thus the yearly cost of e-bike use for an individual is higher for members than casuals, and so reduced member use of e-bikes makes sense. For verification of this hypothesis, more specific data is needed. 
+Z1 members receive a strong discount on e-bike use when compared with Z1 casuals, but still use e-bikes less. This could be that members take more bike rides per-week, and thus the yearly cost of e-bike use for an individual is higher for members than casuals. For verification of this hypothesis, data on how often a given individual takes rides is needed. 
 
 People who rent e-bikes seem to ride further than those who do not, but ride time is a much smaller factor on e-bike use than the relative cost of e-bike vs. classic.
 

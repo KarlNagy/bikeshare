@@ -1525,6 +1525,15 @@ bikeshare_v17 <- bikeshare_v16 %>%
 
 write_csv(bikeshare_v17, "bikeshare_v17.csv")
 ```
+Comparing `ride_ml` by rideable type
+```{r}
+bikeshare_v17 %>%
+  filter(ride_ml != 0) %>%
+  group_by(rideable_type) %>%
+  summarise(mean_ml = mean(ride_ml))
+
+
+```
 
 ## Final Conclusions
 Casuals and members differ in several ways
