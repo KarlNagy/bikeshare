@@ -340,10 +340,13 @@ ggplot(aes(x = member_casual,
            y = ebike_rate,
            fill = member_casual)) +
   geom_col(position = "dodge",
-           width = .5) +
+           width = .3) +
+  geom_text(aes(label = percent(ebike_rate,1)),
+            vjust = -.75) +
   scale_y_percent("Percent of rides taken on Ebikes",
                   limits = c(0,1)) +
-  scale_x_discrete("") +
+  scale_x_discrete("",
+                   breaks = NULL) +
   scale_fill_discrete(name = "") +
   labs(title = "Members vs. Casuals on ebikes",
        subtitle = "Casuals have only a slight preference",
@@ -379,13 +382,15 @@ ggplot(aes(x = area_grouped,
   scale_x_discrete("") +
   scale_fill_discrete(name = "") +
   labs(title = "Zone 2 loves E-bikes",
-       subtitle = "Zone has a huge effect on e-bike usage, membership less so",
+       subtitle = "Zone has a much larger effect than membership",
        caption = "Data: Oct-2020 to Oct-2021") +
   theme_ipsum() 
 
 ```
 
-E-bike vs. classic bike use is not about the absolute cost, but the relative cost of using the other mode of transport. Consider the example the cost of a six minute e-bike ride in each zone, with the bike being returned to a dock, for a member or a casual, contrasted with the classic bike alternative cost:
+E-bike vs. classic bike use is not about the absolute cost, but the relative cost of using the other mode of transport. 
+
+Consider the example the cost of a six minute e-bike ride in each zone, with the bike being returned to a dock, for a member or a casual, contrasted with the classic bike alternative cost:
 
 ```{r}
 
@@ -411,12 +416,12 @@ Z2 riders have no cost difference between an electric or classic bike, and so us
 
 Z1 members receive a strong discount on e-bike use when compared with Z1 casuals, but still use e-bikes less. This could be that members take more bike rides per-week, and thus the yearly cost of e-bike use for an individual is higher for members than casuals. For verification of this hypothesis, data on how often a given individual takes rides is needed. 
 
-People who rent e-bikes seem to ride further than those who do not, but ride time is a much smaller factor on e-bike use than the relative cost of e-bike vs. classic.
+People who rent e-bikes ride 18% further than those who do not, but ride distance is a much smaller factor on e-bike use than the relative cost of e-bike vs. classic.
 
 ## Frequent Riders
-Membership is a bulk ride discount. In theory, people who ride the most would benefit the most from membership from a savings standpoint. Without individualized data however, no supporting quantitative evidence for this theory can be found. Regardless, the underlying logic is so fundamental that it merits discussion.
+Membership is a bulk ride discount. In theory, people who ride the most would see the most cost savings benefit. Without individualized data access there is no supporting evidence for this, but the underlying logic is so fundamental that it merits discussion.
 
-Casuals who pass the breakeven point for ride savings of more than two 30-minute rides per month stand to save money from a membership, assuming they keep this behavior up throughout the year. Not purchasing a membership when they could save money may indicate a reluctance to commit to a lifestyle, therefore strategies to appeal to this group should make investment in a biking lifestyle more attractive.
+Casuals who pass the breakeven point for ride savings of more than two 30-minute rides per month stand to save money from a membership, assuming they keep this behavior up throughout the year. Not purchasing a membership when they could save money may indicate a reluctance to commit to a lifestyle, therefore strategies to appeal to this group should focus on making commitment easier.
 
 ## Limitations/Further information needs
 
@@ -439,7 +444,7 @@ The goal is to convert Casual riders to Members. With this in mind, an ideal ad 
 * Contrast with other transport as being greener, traffic-free, and self-controlled
 
 ### 3) Warm season riders
-* Offer limited-time deals on an annual membership in the June-September window, when casuals see the best ride weather quality
+* Offer limited-time deals on an annual membership in the June-September time frame, when casuals see the best ride weather quality
 * Highlight good weather in ads
 
 ### 4) Frequent riders 
