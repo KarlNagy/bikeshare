@@ -2,33 +2,12 @@
 title: "bikeshare-report"
 author: "Karl Nagy"
 date: "01/24/2021"
-output: github_document
+output: html_document
 ---
 ```{r setup, include=FALSE} 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE,error = FALSE, echo = FALSE) 
 ```
-## Packages Used
-The following were used when in R
-```{r include=FALSE}
-install.packages("tidyverse", repos='http://cran.us.r-project.org')
-library(tidyverse)
-library(purrr)
-library(lubridate)
-library(here)
-library(hms)
-library(scales)
-library(rstudioapi)
-install.packages("ggmap", repos='http://cran.us.r-project.org')
-library(ggmap)
-install.packages("pwr", repos='http://cran.us.r-project.org')
-library(pwr)
-install.packages("hrbrthemes", repos='http://cran.us.r-project.org')
-library(hrbrthemes)
-install.packages("googledrive", repos='http://cran.us.r-project.org')
-library(googledrive)
-install.packages("kableExtra", repos='http://cran.us.r-project.org')
-library(kableExtra)
-```
+
 
 # Key Questions
 * What differentiates annual members and casual riders?
@@ -50,8 +29,14 @@ Historical bikeshare use [dataset](https://divvy-tripdata.s3.amazonaws.com/index
 
 Google drive used for storage of all files
 
+
+
+
 # Data Cleaning and Manipulation
 Initial cleaning and manipulation was done in BigQuery SQL editor, then transferred to R.
+
+
+
 
 ## BigQuery SQL Data Cleaning
 
@@ -64,11 +49,37 @@ Initial cleaning and manipulation was done in BigQuery SQL editor, then transfer
 ###  Fixed
 * removed rows where `started_at` occurred after `ended_at`
 
+
+
 **End product:** bikeshare_v4.csv
+
+
 
 
 ## Data Cleaning and Wrangling in R
 
+### Packages Used
+The following were used when in R
+```{r}
+install.packages("tidyverse", repos='http://cran.us.r-project.org')
+library(tidyverse)
+library(purrr)
+library(lubridate)
+library(here)
+library(hms)
+library(scales)
+library(rstudioapi)
+install.packages("ggmap", repos='http://cran.us.r-project.org')
+library(ggmap)
+install.packages("pwr", repos='http://cran.us.r-project.org')
+library(pwr)
+install.packages("hrbrthemes", repos='http://cran.us.r-project.org')
+library(hrbrthemes)
+install.packages("googledrive", repos='http://cran.us.r-project.org')
+library(googledrive)
+install.packages("kableExtra", repos='http://cran.us.r-project.org')
+library(kableExtra)
+```
 ### bikeshare_v5
 * Added: `ride_length` column created from `ended_at` - `started_at` columns
 
@@ -91,13 +102,13 @@ Initial cleaning and manipulation was done in BigQuery SQL editor, then transfer
 ### bikeshare_v11
 * Added: `area` column with "Hyde_Park", "Evanston", "Z1", "Z2", and "noncluster" categories by setting boundaries of  `start_lat` and `start_lng` values, based on [Divvy's Zone classification](https://account.divvybikes.com/map) and interpreted below
 
-                  Z1:  start_lat > 41.822978 & start_lat < 42.0219536 & start_lng > -87.690118 & start_lng < -87.593127
-                          
-                  Z2_nocollege:   start_lat > 41.643837 & start_lat < 42.0219536 & start_lng > -87.836541 & start_lng < -87.524491 & isFALSE(start_lat > 41.77 & start_lat < 41.82 & start_lng > -87.61 & start_lng < -87.56)
-                          
-                  Hyde Park: start_lat > 41.77 & start_lat < 41.82 & start_lng > -87.61 & start_lng < -87.56
-                          
-                  Evanston:  start_lat > 42.0219536 & start_lat < 42.07 & start_lng > -87.69 & start_lng < -87.65
+   Z1:  start_lat > 41.822978 & start_lat < 42.0219536 & start_lng > -87.690118 & start_lng < -87.593127
+   
+   Z2_nocollege:   start_lat > 41.643837 & start_lat < 42.0219536 & start_lng > -87.836541 & start_lng < -87.524491 & isFALSE(start_lat > 41.77 & start_lat < 41.82 & start_lng > -87.61 & start_lng < -87.56)
+   
+   Hyde Park: start_lat > 41.77 & start_lat < 41.82 & start_lng > -87.61 & start_lng < -87.56
+   
+   Evanston:  start_lat > 42.0219536 & start_lat < 42.07 & start_lng > -87.69 & start_lng < -87.65
                   
 
 
@@ -114,15 +125,15 @@ Initial cleaning and manipulation was done in BigQuery SQL editor, then transfer
 ### bikeshare_v15
 * Changed: `area` column parameters altered to distinguish Evanston from Northwestern University
 
-                 Z1: start_lat > 41.822978 & start_lat < 42.0219536 & start_lng > -87.690118 & start_lng < -87.593127
-                 
-                 Hyde_Park: start_lat > 41.77 & start_lat < 41.82 & start_lng > -87.61 & start_lng < -87.56
-                          
-                 Z2_nocollege: start_lat > 41.643837 & start_lat < 42.0219536 & start_lng > -87.836541 & start_lng < -87.524491
-                         
-                 E_NWU: start_lat > 42.044047 & start_lng > -87.684714 & start_lat < 42.07 & start_lng < -87.65
-                          
-                 E_nocollege: start_lat > 42.0219536
+ * Z1: start_lat > 41.822978 & start_lat < 42.0219536 & start_lng > -87.690118 & start_lng < -87.593127
+   
+ * Hyde_Park: start_lat > 41.77 & start_lat < 41.82 & start_lng > -87.61 & start_lng < -87.56
+   
+ * Z2_nocollege: start_lat > 41.643837 & start_lat < 42.0219536 & start_lng > -87.836541 & start_lng < -87.524491
+   
+ * E_NWU: start_lat > 42.044047 & start_lng > -87.684714 & start_lat < 42.07 & start_lng < -87.65
+   
+ * E_nocollege: start_lat > 42.0219536
                  
     The E_nocollege includes a section that technically is part of Z1, a 2x4 block section just south of Cavalry Catholic Cemetery
 
@@ -130,31 +141,29 @@ Initial cleaning and manipulation was done in BigQuery SQL editor, then transfer
 * Changed: `E_nocollege` > `Ev_nocollege`
            `E_NWU` > `Ev_NW_College`
 * Fixed: readjusted Hyde_Park boundaries to specific streets
-             
- * `Hyde_Park`     - E. 63rd St. in the South - (41.780428 lat)
+  * `Hyde_Park`    - E. 63rd St. in the South - (41.780428 lat)
                    - S. Martin Luther King Dr. in the West - (-87.615707 lng)
                    - E. Hyde Park Blvd in the North - (41.802297 lat)
                    - S. Stony Is Ave. in the East - (-87.586710 lng)
-
-
- * `Ev_NW_College` - Bordered by Lake St. in the South - (42.044047 lat)
+                 
+  * `Ev_NW_College`- Bordered by Lake St. in the South - (42.044047 lat)
                    - Maple Ave. in the West - (-87.684714 lng)
                
  * `Ev_nocollege`  - Bordered by W. Howard St. in the South - (42.0219536 lat)
                    - excluding the `Ev_NW_College` area
-               
+                   
  * `Z1`            - Bordered by W. Pershing Rd in the South - (41.822978 lat)
                    - N Western Ave. in the West - (-87.690118 lng)
                    - W Howard St. in the North - (42.0219536 lat)
                    - these borders omit a small chunk of the north of `Z1`, 
                       assigning it instead to `Ev_nocollege`
-
+                      
  * `Z2_nocollege`  - Out to Indiana state line in the East - (-87.524491 lng)
                    - W Howard St. in the North - (42.0219536 lat)
                    - excludes `Z1` and `Hyde_Park`
 
 ### bikeshare_v17
-* Removed: `ride_length_dur` wass no longer needed 
+* Removed: `ride_length_dur` was no longer needed 
 ```{r}
 
 drive_download(
@@ -180,6 +189,7 @@ bikeshare_v17 <- read_csv("bikeshare_v17.csv",
      ride_ml = col_double(),
      speed_mph = col_double()))
 ```
+
 
 
 
@@ -221,8 +231,9 @@ ggplot(aes(x=day_name_2,
 
 
 ```
-
 Members use bikes more during the weekday than casuals, who prefer the weekend. This is likely due to members using the bikes for work/school, and casuals for pleasure. The trend is especially prominent in the 'Hyde_park` cluster around the university campus, where students have reason not only for home-work-home transit, but multiple short trips from class to class, nearby restaurants, and study locations. It is worth mentioning that without individual data to confirm how many trips per person are taken per day or more detailed individual information to confirm a lifestyle pattern, this hypothesis can only go so far.
+
+
 
 
 ### Seasonal Bike Use
@@ -248,6 +259,8 @@ ggplot(aes(x = started_at,
 Chicago winters are harsh, and total rides across both members and casuals show this; Rides decrease outside of temperate months and increase when weather is pleasant. Anecdotal observation of recorded temperatures show that total rides drop harshly when the maximum temperature reaches freezing or below, likely the bitter cold makes biking less attractive. During Jan. 26 - Feb. 15 for example, Chicago had a record 34 in. of snow, which corresponds to the lowest point of ride density.
 
 Though both members and casuals are affected by the seasons, members have less of a ride *increase* than casuals in temperate months, and less of a ride *decrease* in colder months. This more level yearly behavior taken with the weekday use pattern seems to suggest a clear theme: members ride for function, casuals ride for pleasure, and bike riding as a whole is seasonal.
+
+
 
 
 ### Distance, speed, and ride time
@@ -320,10 +333,11 @@ ggplot(aes(x = ride_ml,
 
 
 ```
-
 Members and Casuals tend to cover a similar distance, though Members tend to shorten their ride by going faster than Casuals.
 
 Considering that Chicago bikeshare rides compete with walking, electric scooters, public transportation, and automobile use, longer or shorter distances further from the *peak of 0.75 to 1.5mi.* may cause potential riders to use an alternative means of transport instead. 
+
+
 
 
 ### Rideable type use
@@ -387,7 +401,6 @@ ggplot(aes(x = area_grouped,
   theme_ipsum() 
 
 ```
-
 E-bike vs. classic bike use is not about the absolute cost, but the relative cost of using the other mode of transport. 
 
 Consider the example the cost of a six minute e-bike ride in each zone, with the bike being returned to a dock, for a member or a casual, contrasted with the classic bike alternative cost:
@@ -418,10 +431,16 @@ Z1 members receive a strong discount on e-bike use when compared with Z1 casuals
 
 People who rent e-bikes ride 18% further than those who do not, but ride distance is a much smaller factor on e-bike use than the relative cost of e-bike vs. classic.
 
+
+
+
 ## Frequent Riders
 Membership is a bulk ride discount. In theory, people who ride the most would see the most cost savings benefit. Without individualized data access there is no supporting evidence for this, but the underlying logic is so fundamental that it merits discussion.
 
 Casuals who pass the breakeven point for ride savings of more than two 30-minute rides per month stand to save money from a membership, assuming they keep this behavior up throughout the year. Not purchasing a membership when they could save money may indicate a reluctance to commit to a lifestyle, therefore strategies to appeal to this group should focus on making commitment easier.
+
+
+
 
 ## Limitations/Further information needs
 
@@ -432,6 +451,9 @@ Other information about individuals like occupation, age, residence, yearly earn
 
 ### Individual bike data
 Ebikes may be so popular that their actual use is limited by the number of them in circulation. With individual bicycle data, the uptime per bike could be found, and a better sense of e-bike popularity established beyond current data. Knowing other information like locked vs. docked e-bike use could help identify whether docking availability may act as a confounding variable. Without this crucial information, no conclusion can be made as to member/casual e-bike preference.
+
+
+
 
 ## Recommendations
 The goal is to convert Casual riders to Members. With this in mind, an ideal ad campaign would find casuals with member-like behaviors and appeal to them. Here are four primary behavior types to look for in casuals, and strategies for each:
