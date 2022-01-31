@@ -46,7 +46,6 @@ The following were used when in R
 ```{r, include= FALSE}
 install.packages("tidyverse", repos='http://cran.us.r-project.org')
 install.packages("ggmap", repos='http://cran.us.r-project.org')
-install.packages("ggmap", repos='http://cran.us.r-project.org')
 install.packages("pwr", repos='http://cran.us.r-project.org')
 install.packages("hrbrthemes", repos='http://cran.us.r-project.org')
 install.packages("googledrive", repos='http://cran.us.r-project.org')
