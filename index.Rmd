@@ -31,7 +31,7 @@ These differences in behavior have implications for a marketing campaign attempt
 
 # Data Sources and Security ([RAW](https://divvy-tripdata.s3.amazonaws.com/index.html))([CLEANED](https://drive.google.com/file/d/1ZiEa7xBAaW0IXlQh97FCYMYOdkRuHL6u/view?usp=sharing))
 
-Historical bikeshare use data obtained from *Divvy*, a Chicago-based bikeshare company. Private Google drive storage was used for storage of all files
+Historical bikeshare use data obtained from *Divvy*, a Chicago-based bikeshare company. Private Google drive storage was used for all files. The data covered a period from 2020-Oct. to 2021-Oct, and included variables like the starting and ending time and location of rides, what type of bicycle was used, and whether the ride was taken by someone with a membership (member) or without one (casual). 
 
 
 
