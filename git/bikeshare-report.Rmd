@@ -1,8 +1,9 @@
 ---
-title: "bikeshare-report"
+title: "Bikeshare Report"
 author: "Karl Nagy"
 date: "01/24/2021"
-output: html_document
+output: 
+  html_document
 ---
 ```{r setup, include=FALSE} 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE,error = FALSE, echo = FALSE) 
@@ -62,6 +63,16 @@ Initial cleaning and manipulation was done in BigQuery SQL editor, then transfer
 The following were used when in R
 ```{r}
 install.packages("tidyverse", repos='http://cran.us.r-project.org')
+install.packages("ggmap", repos='http://cran.us.r-project.org')
+install.packages("ggmap", repos='http://cran.us.r-project.org')
+install.packages("pwr", repos='http://cran.us.r-project.org')
+install.packages("hrbrthemes", repos='http://cran.us.r-project.org')
+install.packages("googledrive", repos='http://cran.us.r-project.org')
+install.packages("kableExtra", repos='http://cran.us.r-project.org')
+```
+
+```{r, include=FALSE, echo=TRUE}
+
 library(tidyverse)
 library(purrr)
 library(lubridate)
@@ -69,15 +80,10 @@ library(here)
 library(hms)
 library(scales)
 library(rstudioapi)
-install.packages("ggmap", repos='http://cran.us.r-project.org')
 library(ggmap)
-install.packages("pwr", repos='http://cran.us.r-project.org')
 library(pwr)
-install.packages("hrbrthemes", repos='http://cran.us.r-project.org')
 library(hrbrthemes)
-install.packages("googledrive", repos='http://cran.us.r-project.org')
 library(googledrive)
-install.packages("kableExtra", repos='http://cran.us.r-project.org')
 library(kableExtra)
 ```
 ### bikeshare_v5
