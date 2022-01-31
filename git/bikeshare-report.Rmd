@@ -61,7 +61,7 @@ Initial cleaning and manipulation was done in BigQuery SQL editor, then transfer
 
 ### Packages Used
 The following were used when in R
-```{r}
+```{r, include= FALSE}
 install.packages("tidyverse", repos='http://cran.us.r-project.org')
 install.packages("ggmap", repos='http://cran.us.r-project.org')
 install.packages("ggmap", repos='http://cran.us.r-project.org')
@@ -71,7 +71,7 @@ install.packages("googledrive", repos='http://cran.us.r-project.org')
 install.packages("kableExtra", repos='http://cran.us.r-project.org')
 ```
 
-```{r, include=FALSE, echo=TRUE}
+```{r, echo = TRUE}
 
 library(tidyverse)
 library(purrr)
