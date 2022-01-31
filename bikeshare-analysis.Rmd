@@ -1,0 +1,1611 @@
+---
+title: "bikeshare analysis"
+author: "Karl Nagy"
+date: "10/27/2021"
+output: html_document
+---
+# Key Questions
+* What differentiates annual members and casual riders?
+* How can casual riders be converted to annual members to drive future growth?
+
+# Data Sources and Security
+CSV files come from *Motivate*, an actual bikeshare company.
+
+[Data Source Here](https://divvy-tripdata.s3.amazonaws.com/index.html)
+
+Data is to be stored on google drive, with myself having sole access capability.
+
+# Cleaning using BigQuery
+Followed my [usual procedure](https://docs.google.com/document/d/1BgPLZ7S5W4OQ1D_wKm-vjH-jr1_8v9uCoXBQHu4UPpk/edit?usp=sharing) for cleaning. The past 12 months bycycle data, ranging from 2020.09 to 2021.09, were downloaded separately. The UNION SQL command was used to merge the 12 monthwise tables into one parent table. This parent table is what was cleaned.
+
+## Added
+--*day_of_week* column created from the *started_at* column -- string or numeric days of the week, that is the question
+--*ride_length* column created from *ended_at - started_at* columns -- will this be a problem later on with subtracting timestamps?
+
+## Changed
+--2020.10 and 2020.11 tables use integer values for *start_station_id* and *end_station_id* columns, changed to string values to match the other tables
+--column order rearranged for readability
+
+## Fixed
+--removed rows where ride *started_at* occurred after *ended_at*, which caused duplicate rows -- there were identical *ride_id* entries for the duplicates with erroneous start/end times, I wonder what caused this?
+
+# Transfer to R
+
+Final parent table saved [here](https://drive.google.com/file/d/1Z9Ztew2bcIojiSv9UjA0KBeaLyvN8o1a/view?usp=sharing)
+
+## Importing the cleaned CSV into R
+```{r}
+install.packages("googledrive")
+library(googledrive)
+
+drive_download("bikeshare_v4.csv", type = "csv")
+
+```
+
+## Installing `tidyverse`.
+```{r}
+install.packages("tidyverse")
+library(tidyverse)
+```
+
+## Creating a data frame from the imported CSV
+```{r}
+bikeshare_v4 <- read_csv("Work/Data Analyst/Case Studies/Case-Study-1-Bike-Share/Data/bikeshare_v4.csv", 
+    col_types = cols(started_at = col_datetime(format = "%Y-%m-%d %H:%M:%S"), 
+        ended_at = col_datetime(format = "%Y-%m-%d %H:%M:%S")))
+View(bikeshare_v4)
+```
+
+## creating a ride_length column
+```{r}
+ride_length <- bikeshare_v4 %>%
+  select(ride_id,started_at,ended_at) %>%
+  mutate(ride_length = ended_at - started_at)
+```
+
+## checking type of new ride_length column
+```{r}
+glimpse(ride_length)
+```
+## Converting the ride_length column into a duration, removing other columns for join
+```{r}
+ride_length <- ride_length %>%
+  mutate(ride_length_2 = as.duration(ride_length)) %>%
+  select(ride_id,ride_length_2)
+```
+
+## Removing the old ride_length calc from `bikeshare_v4`, and combining it with the new `ride_length` table
+```{r}
+bikeshare_v5 <- bikeshare_v4 %>%
+  full_join(ride_length, by = "ride_id") %>%
+  subset(select = -c(ride_length))
+```
+
+# Analysis time!
+```{r}
+install.packages("DataExplorer")
+library(DataExplorer)
+create_report(bikeshare_v5)
+```
+
+### Insights
+* classic bikes are most popular, about double that of electric bikes
+* rides overall start with lowest frequency on Monday, and increase as the week continues. There is a slight jump on Friday, followed by a huge jump on Saturday which then drops to a bit above Friday levels on Sunday.
+
+### Data Questions
+* What are all the na values in `start_station_name`, `start_station_id`, `end_station_name`, and `end_station_id`?
+** These na values account for about 10-11% of all rides. The company offers a non-docked lockup option for an additional cost, perhaps that explains a ride that either does not start or end at a known station?
+
+* Why are there the same amount of `start_station_id` and `end_station_id`, but different `start_station_name` and `end_station_name`?
+** The difference between `start_station_name` and `end_station_name` categories is 785 to 782. Three different results. That could either be duplicate entries, or that three stations did not have any rides end at them in 12 months of data and over 5 million rides. That doesn't seem likely.
+
+### Hypotheses
+* Compare casual and member users across
+--seasons
+--days of the week
+--particular stations
+--areas of the city
+--bike type
+
+## Renaming end_station_name, end_station_id, start_station_name, and start_station_id na values as "undocked"
+```{r}
+bikeshare_v6 <- bikeshare_v5 %>%
+  replace_na(list(end_station_name = "undocked",
+                  end_station_id = "undocked",
+                  start_station_name = "undocked",
+                  start_station_id = "undocked"))
+```
+
+## Checking for any remaining na valuess
+```{r}
+summary(bikeshare_v6)
+```
+Looks like `end_lat` and `end_lng` still have some na's, and they both match. What do those rows look like?
+
+## Viewing the rows where end_lng and end_lat have na values
+```{r}
+filter(bikeshare_v6,is.na(end_lat)) %>%
+  filter(.,is.na(end_lng)) %>%
+  View()
+  
+```
+The amount of rows with NA for the combined filter is the same as the number of NA's for each individual variable. If `end_lat` is NA, then `end_lng` is NA, and vice-versa.
+
+* Did the battery in the GPS run out of battery or lose signal?
+* It seems like the results are all "undocked" which seems to support a scenario where a lost bicycle runs out of power for its tracking mechanism
+* The high end of the `ride_length_2` column results have many similar results grouped together, for durations of  ~1.04 days. About half of the undocked, unknown `end_lat` and `end_lng` results have this `ride_length_2` value. Perhaps this is the amount of fully charged battery time a bicycle gps can run for?
+
+Regardless, these questions are not relevant to the business concern. Back to analysis.
+
+Time to compare casual riders and members.
+
+--seasonal use
+--days of the week
+--particular stations
+--areas of the city
+--bike type
+
+## Comparing seasonal use for casual riders and members
+```{r}
+ggplot(bikeshare_v6,aes(x = started_at, fill = member_casual)) + ## use seasonal bar chart to convey seasonal info more easily
+         geom_density(alpha = .2) +
+  scale_y_continuous("Rides")
+```
+### Observations
+* casuals and members follow a similar pattern in seasonal activity
+* casual spikes seem to be the most extreme, members tend to be more measured in intensity
+* seasonal preference for Mid-May to late September                                                                                                              
+
+### Interpretations
+* events and weekends likely drive casual use, members have a consistent need for rides
+
+### Follow-up
+What is driving member usage of bikes during non-event times and non-summer months, when they are most prevalent?
+
+## Loading scales package
+```{r}
+install.packages("scales")
+library(scales)
+```
+
+## Comparing members and casuals by `day_of_week`
+```{r}
+bikeshare_v6 %>%
+  
+ggplot(aes(x=day_of_week, fill = member_casual)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~member_casual) +
+  scale_y_continuous("Rides",labels = comma) +
+  scale_x_continuous(breaks = seq(1,7,1))
+```                           
+### Observations
+* most riders on Monday-Friday are members
+* most riders on Saturday-Sunday are casuals
+* member weekday use rises from Monday, and starts falling after Wednesday down to Friday
+
+### Interpretations
+* casuals use the bikeshare for weekend outings, members use bikes for weekday activites like school/work
+
+## Saving the bikeshare_v6 data
+```{r}
+## creeeeepy. Not sure how, but somehow I was able to save it by starting RStudio up fresh, then the following
+library(tidyverse)
+library(here)
+library(hms)
+library(scales)
+load("~/Work/Data Analyst/Case Studies/Case-Study-1-Bike-Share/current-workspace.RData")
+write_csv(bikeshare_v6,"Data/bikeshare_v6.csv")
+
+## maybe something about the new session allowed me to make the new CSV without issue, but I don't know what at this time. Important to remember
+```
+
+
+## Weekly member use information by month
+```{r}
+
+bikeshare_v6 %>%
+  mutate(month_label = lubridate::month(started_at)) %>%
+  filter(member_casual == "member") %>%
+  
+ggplot(aes(x=day_of_week)) + ## this looks good, include in final report with polish
+  geom_bar(position = "dodge") +
+  facet_wrap(~month_label) +
+  scale_y_continuous("Rides",labels = comma) +
+  scale_x_continuous(breaks = seq(1,7,1))
+```
+### Observations
+* the winter season is the deadest for the members using the bikeshare
+* May-Oct seems to be the peak bike-use period for members
+
+### Interpretations
+* checking national weather service data for Chicago, the average temperature for Dec-Feb drops below freezing. Icy roads may be the reason members stop using bikes
+
+### Followup
+* compare the same info with casual users, see if the seasonal trend follows
+* import national weather service data, run correlation analysis with bikeshare data, check for trends to confirm observations. Find out factors correlate most with higher member counts, and what corellates with higher casual counts
+
+## Member vs. casuals: 'rideable_type' use information by season
+```{r}
+bikeshare_v6 %>%
+  mutate(month = lubridate::month(ended_at)) %>% ## not a fan of this graph
+  mutate(season = case_when(
+    month %in% c(12,1,2) ~ "Winter",
+    month %in% 3:5 ~ "Spring",
+    month %in% 6:8 ~ "Summer",
+    month %in% 9:11 ~ "Fall"
+  )) %>%
+            
+  
+  
+ggplot(aes(x=rideable_type, fill = member_casual)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~season) +
+  scale_y_continuous("Rides",labels = comma)
+```
+### Observations
+* members have more rides with classic bikes overall
+* no idea what 'docked_bike' means, aren't all supposed to be docked at storage?
+** gave their customer service a call - docked_bike refers to classic bikes that at the time of their ride_id being formed were connected to a station - no electric bikes do this!
+* summer 'electric_bike' stands out as the only non-'docked_bike' instance of casual ride count outdoing member ride count
+
+### Interpretations
+* docked_bike = classic_bike, time to change the data
+
+### Followup
+* Transforming 'bikeshare_v6' data
+
+## Changing 'rideable_type' docked_bike values to classic_bike
+```{r}
+  bikeshare_v7 <- bikeshare_v6 %>%
+  mutate(rideable_type = str_replace(rideable_type,"docked_bike","classic_bike")) 
+
+unique(bikeshare_v7$rideable_type) ## checking what types of variables are in the new table
+
+write_csv(bikeshare_v7,"Data/bikeshare_v7.csv")
+
+```
+
+Excellent! No "docked_bike" options. Let's see how that changes the viz from above.
+
+## Members vs. Casuals: 'rideable_type' use information by season
+```{r}
+bikeshare_v7 %>%
+  mutate(month = lubridate::month(ended_at)) %>% 
+  mutate(season = case_when(
+    month %in% c(12,1,2) ~ "Winter",
+    month %in% 3:5 ~ "Spring",
+    month %in% 6:8 ~ "Summer",
+    month %in% 9:11 ~ "Fall"
+  )) %>%
+            
+  
+  
+ggplot(aes(x=rideable_type, fill = member_casual)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~season) +
+  scale_y_continuous("Rides",labels = comma)
+```
+
+
+### Obs.
+* more rides are taken by members on classic bikes year round
+* more rides are taken by casuals on classic bikes year round
+* summer and spring have a comparable percent difference between classic and e-bike ride count, and the highest difference across the year
+* summer is the only time casual ride count outpaces member ride count
+
+### Interpretations
+* members are a more durable cohort in terms of year-round riding
+* people like to ride when it is nice out, winter is awful across all groups
+
+### Followup
+* What numbers could be used to compare seasonal use, not just graph observations?
+
+Time to finally look at the geographic distribution, it would be a shame to have the lat/lng data and not graph it out.
+
+## Setting API for google maps
+```{r}
+library(rstudioapi)
+install.packages("ggmap")
+library(ggmap)
+
+register_google(key = "insert key here")
+```
+
+## Comparing areas of casual and member rides
+```{r}
+map <- get_googlemap(center = c(lon = -87.7104663, lat = 41.9018514),
+                      zoom = 10,
+                      maptype = "terrain",
+                      color = "color")
+
+lats <- c(41.6,42.1)
+lons <- c(-87.875,-87.5)
+no_margin <- c(0,0)
+
+ggmap(map) +
+  stat_density2d(data = bikeshare_v16, aes(x=start_lng, y=start_lat, fill = ..level..), 
+                 alpha = .4, 
+                 bins = 100, 
+                 geom = "polygon") +
+  facet_wrap(~member_casual) +
+  scale_x_continuous(limits = lons, expand = no_margin) +
+  scale_y_continuous(limits = lats, expand = no_margin) 
+
+
+```
+### Obs
+* outlier cluster around Northwestern University Evanston Campus
+* outlier cluster around University of Chicago campus
+* dense main cluster in downtown Chicago around where museums, waterside paths, education, and downtown areas all congregate
+
+### Interpretations
+* the outliers indicate students may use bikes more, though the main cluster is too dense to pick them apart
+
+### Followup
+* Assuming those who use bikes in the university area are students, what difference exists between the two outlier student clusters and the main cluster?
+
+* How can the main cluster be separated further?
+
+*Guuuuuh. Checked the divvy site, they already offer a "university membership" option to students, exactly what I was thinking might be a good way to go. They also offer an option for businesses to cover the cost of employees at a discount.*
+
+Time for some math and summary stats then:
+- average ride_length difference between members and casuals, by day of week, season
+-- maybe average ride_length differs for members/casuals, so offering someone a membership if they meet a certain threshold of ride_length that members usually get may make sense
+
+## Finding average ride_length
+```{r}
+bikeshare_v8 <- rename(bikeshare_v7,ride_length = ride_length_2)
+write_csv(bikeshare_v8,"Data/bikeshare_v8.csv")
+
+bikeshare_v8 %>%
+  group_by(member_casual) %>%
+  summarise(mean_ride_length = mean(ride_length), count = n()) %>%
+  mutate(percent = (count/sum(count)*100))
+```
+### Interpretations
+* Huge difference in mean `ride_length` for casuals and members. Are outliers driving this?
+* casuals put more wear and tear on the bike fleet
+* casuals take the bikes out for long periods of time, members take more frequent but shorter rides
+
+### Followup
+* find what qualifies as an outlier
+
+## Identifying `ride_length` outliers
+```{r}
+bikeshare_v8 %>%
+  mutate(ride_length_num = (as.numeric(ride_length)/60)) %>%
+
+ggplot(aes(x = ride_length_num)) +
+  geom_density()
+```
+### Interpretation
+* huuuuuge outliers are present
+
+### Followup
+* Finding std. dev. and what `ride_length_num` looks like if values above 2-3 std. deviations from the mean are eliminated
+
+## Finding what outliers to eliminate
+```{r}
+summary(bikeshare_v8$ride_length) ## 0 second times can be eliminated as mistakes, arbitrarily up to 30s
+
+(sd(bikeshare_v8$ride_length)/60) ## SD is huge, about 3 hours, need to try cutting off the upper chunk
+
+bikeshare_v9 <- bikeshare_v8 %>% ## creating new table with an additional ride length column with numeric datatype
+  mutate(ride_length_min = as.numeric(ride_length)/60) %>% ## a number datatype, in minutes
+  rename(ride_length_dur = ride_length) ## a lubridate duration datatype, in seconds(~minutes)
+write_csv(bikeshare_v9,"Data/bikeshare_v9")
+
+(sum(bikeshare_v9$ride_length_min > 1440 | ## absolute number of rides less than 30 seconds, or greater than a day
+        bikeshare_v9$ride_length_min < .5))
+
+percent((sum(bikeshare_v9$ride_length_min > 1440 | ## checking percentage of total
+        bikeshare_v9$ride_length_min < .5))/sum(bikeshare_v9$ride_length_min), accuracy = .001)
+
+```
+### Followup
+* The amount that is being eliminated is a small amount, what does the distribution look like without the <30s and >1 day observations
+
+## Creating filtered data
+```{r}
+outlier_filtered <- bikeshare_v9 %>%
+  filter(ride_length_min < 1440 & ride_length_min > .5) ## less than 30 seconds may be a mistake, more than a day seems strange. Both seem conservative cutoofs to make
+
+summary(outlier_filtered$ride_length_min)
+summary(bikeshare_v9$ride_length_min)
+```
+Filter was successful, median and mean did not change too much. The max values were severely curtailed.
+
+## Graphing `ride_length_min` without outliers
+```{r}
+outlier_filtered %>%
+  ggplot(aes(x = ride_length_min)) +
+  geom_histogram()
+```
+What amount is above ~250 min.? Must keep in mind this is for comparison between casual/members.
+
+## What amount of rides are above the 250 min mark?
+```{r}
+(sum(outlier_filtered$ride_length_min > 250)/count(outlier_filtered)*100) ## % data without values greater than a day, or less than 30s
+
+(sum(bikeshare_v9$ride_length_min < 250)/count(bikeshare_v9)*100) ## % raw data
+
+sd(bikeshare_v9$ride_length_min)
+sd(outlier_filtered$ride_length_min)
+```
+
+The data above 250 minutes is ~0.2%, which is pretty tiny. 250min = a bit above 4 hours. I think the outliers can be further cut.
+
+Checked online, found that IQR and median are better measures for identifying outliers than mean and standard deviation when the data is skewed. This dataset is highly skewed. 
+
+## Checking IQR and median
+```{r}
+summary(bikeshare_v9$ride_length_min)
+```
+Median = 12.60
+IQR = 22.82 - 7.10 = 15.72
+
+Using IQR test: 
+```{r}
+(15.72*1.5) + 22.82 ## upper bound for outliers
+```
+Finding how many rows remain from the original results:
+```{r}
+(sum(bikeshare_v9$ride_length_min < 46.4)/count(bikeshare_v9)*100) ## percent of rows covered
+```
+~93% coverage with the IQR method. A bit too much thrown out. What would 95% and 99% raw data look like? Why would I pick either? I need to see what the results look like with and without outliers. 250 min may be a good place to start a cut, as it still includes ~99.8% of the data.
+
+renaming `outlier_filtered`
+```{r}
+bikeshare_v10 <- outlier_filtered
+```
+
+finding what the percentiles come out to
+```{r}
+quantile(bikeshare_v10$ride_length_min, probs = c(0.9, 0.95, 0.98, 0.99))
+```
+
+## What does the data with a 250 min cutoff look like compared to a 46.4 min cutoff?
+```{r}
+bikeshare_v10 %>%
+  filter(ride_length_min <250) %>% ## 99.7% of the data
+  ggplot(aes(x = ride_length_min), fill) +
+  geom_histogram(stat = "count")
+
+bikeshare_v10 %>%
+  filter(ride_length_min <46.4) %>% ## 92.6% of the data
+  ggplot(aes(x = ride_length_min), fill) +
+  geom_histogram(stat = "count")
+```
+### Obs./Int.
+* the high arc of the curve is around 5-10 minutes
+* few use the bikes more than 45 min, the amount rideable for a member before additional charges
+
+## Comparing member/casual ride time
+```{r}
+bikeshare_v10 %>%
+  filter(ride_length_min <250) %>% ## 99.7% of the data
+  ggplot(aes(x = ride_length_min,fill = member_casual)) +
+  geom_histogram(binwidth = .5) +
+  scale_y_continuous(labels = label_number()) +
+  facet_wrap(~member_casual)
+```
+### Obs.
+* casuals have about double the `mean_ride_length` of members
+* looks like members take more, shorter rides
+
+### Int.
+* members have short, regular commutes
+* casuals have longer, seasonal commutes
+
+### Followup
+* Offer people who may be converted to casuals deals on longer ride times during peak season
+* Offer casuals rewards for starting a ride of any duration, especially on weekdays
+* find the percentage of members vs. casuals in quartiles of ride length for use in a report
+
+## Members vs. casuals by quintile
+```{r}
+bikeshare_v10 %>%
+  filter(ride_length_min<250) %>%
+  group_by(member_casual) %>%
+  summarize("20th" = quantile(ride_length_min, probs = .2),
+            "40th" = quantile(ride_length_min, probs = .4),
+            "60th" = quantile(ride_length_min, probs = .6),
+            "80th" = quantile(ride_length_min, probs = .8))
+
+```
+
+Alrighty, ride length has been investigated. On to those two geographic clusters from earlier, then that should be about it! 
+
+## Isolating and Analyzing the two university clusters
+
+The two locations are Northwestern University at Evanston and University of Chicago at Hyde Park.
+
+Evanston - 42.0559853,-87.6774016; 15z
+
+Hyde Park - 41.795121,-87.5953475; 14z
+
+```{r}
+bikeshare_v10 %>%
+  filter(between(start_lat,41.77,41.82),between(start_lng,-87.61,-87.56)) %>%
+  summarise(HP_ride_length_m = mean(ride_length_min), 
+            HP_member_percent = sum(member_casual == "member")/n()*100)
+
+bikeshare_v10 %>%
+  filter(between(start_lat,42.03,42.07),between(start_lng,-87.69,-87.65)) %>%
+  summarise(Ev_ride_length_m = mean(ride_length_min), 
+            Ev_member_percent = sum(member_casual == "member")/n()*100)
+
+bikeshare_v10 %>%
+  summarise(population_ride_length_m = mean(ride_length_min),
+             population_member_percent = sum(member_casual == "member")/n()*100)
+
+
+
+
+```
+### Obs./Int.
+* The Hyde Park population has an ~8% higher rate of membership than the total population, and a similar mean ride length
+* The Evanston population has an ~4% lower rate of membership than the total population, and a seven minute higher mean ride length
+* Assuming the majority of those in the area are students or affiliated with the university, students currently without a membership or casual experience could be a good target for marketing. The trouble comes with the higher ride length for Evanston, which may be influencing the attractiveness of memberships.
+* A confounding effect is present: the pricing gives a 23% discount to some universities, of which the Hyde Park University of Chicago is a recipient. Is it the discount or the student status that increases member rate? Unknowable without more in depth knowledge of an individuals pricing plan
+
+### Followup
+* Make two groups: Hyde Park and Evanston for comparison.
+* Need a third group to capture the center cluster. Use Zone 1 coverage from Divvy site as a boundary?
+* Need a fourth group to compare against Zone 1.
+* Do correlation analysis with ride_length and membership
+
+## Student status and ride_length influence on membership rate
+
+Making the student cluster groups
+```{r}
+bikeshare_v11 <- bikeshare_v10 %>%
+  mutate(area = case_when(start_lat > 41.77 & start_lat < 41.82 &
+                            start_lng > -87.61 & start_lng < -87.56 ~ "Hyde_Park",
+                          start_lat > 42.0219536 & start_lat < 42.07 &
+                            start_lng > -87.69 & start_lng < -87.65 ~ "Evanston",
+                           TRUE ~ "noncluster"))
+```
+
+Making the Zone 1/Zone 2 cluster groups
+
+Time to set approximate borders, and find the lat/lng coordinates for them
+* Z1 - Bordered by W. Pershing Rd in the South - (41.822978 lat)
+     - N Western Ave. in the West - (-87.690118 lng)
+     - out to the lake in the East - (-87.593127 lng)
+     - W Howard St. in the North - (42.0219536 lat)
+     - these borders omit a small chunk of the north of Z1
+
+* Z2 - Bordered by southern tip of 138th Pl in the South - (41.643837 lat)
+     - N Cumberland Ave. in the West - (-87.836541 lng)
+     - Out to Indiana state line in the East - (-87.524491 lng)
+     - W Howard St. in the North - (42.0219536 lat)
+     
+Redoing the case_when mutation, with the Z1 and Z2 clusters included
+```{r}
+bikeshare_v11 <- bikeshare_v10 %>%
+  mutate(area = case_when(start_lat > 41.822978 & start_lat < 42.0219536 &
+                            start_lng > -87.690118 & start_lng < -87.593127 ~ "Z1",
+                          start_lat > 41.643837 & start_lat < 42.0219536 &
+                            start_lng > -87.836541 & start_lng < -87.524491 & isFALSE(start_lat > 41.77 & start_lat < 41.82 &
+                            start_lng > -87.61 & start_lng < -87.56)  ~ "Z2", ## excluding Hyde_Park from Z2
+                          start_lat > 41.77 & start_lat < 41.82 &
+                            start_lng > -87.61 & start_lng < -87.56 ~ "Hyde_Park",
+                          start_lat > 42.0219536 & start_lat < 42.07 &
+                            start_lng > -87.69 & start_lng < -87.65 ~ "Evanston",
+                           TRUE ~ "noncluster"))
+```
+
+
+Comparing membership distribution across ride_length by cluster
+```{r}
+bikeshare_v11 %>% ## Evanston cluster
+  filter(ride_length_min <46.4) %>%
+  filter(area == "Evanston") %>%
+ggplot() +
+  geom_density(aes(x = ride_length_min, fill = member_casual, alpha = .4)) +
+  expand_limits(y = .12) +
+  labs(title = "Evanston",
+       y = "Density")
+ggsave("cluster_plots/cluster-analysis_Evanston.png")
+
+bikeshare_v11 %>% ## Hyde_Park cluster
+  filter(ride_length_min <46.4) %>%
+  filter(area == "Hyde_Park") %>%
+ggplot() +
+  geom_density(aes(x = ride_length_min, fill = member_casual, alpha = .4)) +
+  expand_limits(y = .12) +
+  labs(title = "Hyde Park Cluster",
+       y = "Density")
+ggsave("cluster_plots/cluster-analysis_Hyde-Park.png")
+
+bikeshare_v11 %>% ## Zone 1 Cluster
+  filter(ride_length_min <46.4) %>%
+  filter(area == "Z1") %>%
+ggplot() +
+  geom_density(aes(x = ride_length_min, fill = member_casual, alpha = .4)) +
+  expand_limits(y = .12) +
+  labs(title = "Zone 1 Cluster",
+       y = "Density")
+ggsave("cluster_plots/cluster-analysis_Z1.png")
+
+bikeshare_v11 %>% ## Zone 2 Cluster
+  filter(ride_length_min <46.4) %>%
+  filter(area == "Z2") %>%
+ggplot() +
+  geom_density(aes(x = ride_length_min, fill = member_casual, alpha = .4)) +
+  expand_limits(y = .12) +
+  labs(title = "Zone 2 Cluster",
+       y = "Density")
+ggsave("cluster_plots/cluster-analysis_Z2.png")
+
+bikeshare_v11 %>% ## population as a whole
+  filter(ride_length_min <46.4) %>%
+ggplot() +
+  geom_density(aes(x = ride_length_min, fill = member_casual, alpha = .4)) +
+  expand_limits(y = .12) +
+  labs(title = "Whole Population",
+       y = "Density")
+ggsave("cluster_plots/cluster-analysis_Whole-Population.png")
+
+
+```
+### Evanston/Whole Population Obs.
+* Peak member density for Evanston and Whole Population time is comparable, ~6min
+* Evanston and the Whole Population have a similar level of member density at their peak, ~0.06-0.07
+* Whole Population has a greater density of members before peak density than Evanston
+* Whole Population has a greater density of casuals than members after the membership breakeven point, ~11.5-13.5 min.
+
+### Evanston/Whole Population Int.
+* The ride_length behavior of members and casuals is more similar in Evanston than the Whole Population
+* Assuming new members are taken from casuals, Evanston could be a prime target for membership, given its low overall membership ratio and the similarity of behavior between members and casuals. Someone who rides casually in Evanston has many of the same riding preferences as a member, making a membership sell easier. Does this hold up seasonally though?
+
+### Evanston/Whole Population Followup
+* Cross section Evanston by season
+
+### Hyde_Park/Whole Population Obs.
+* Hyde_Park has a huge, almost double difference from Whole Population in the peak member density, ~0.116 and ~0.07 respectively
+* Hyde_Park has a higher weight given to shorter ride_length for both members and casuals than Whole Population
+* Hyde_Park has more even variance for long ride distances: if you are going for a ride longer than ~15min. in the Hyde_Park area, there is a more similar likelihood that your ride could be either 20min. or 40min, than a rider from the Whole Population area. Hyde_Park riders don't care about how much time they are on the bike after about 20 min.
+* membership breakeven points for Hyde_Park and Whole Population are ~8min. and ~11.5min.
+
+Cross-Section of Data
+```{r}
+bikeshare_v11 %>%
+  group_by(area) %>%
+  summarise(group_count = n()) %>%
+  arrange(desc(group_count))
+```
+
+Observing `noncluster`
+```{r}
+map_2 <- get_googlemap(center = c(lon = -87.7104663, lat = 41.9018514),
+                      zoom = 10,
+                      maptype = "terrain",
+                      color = "color")
+
+nc_bikeshare_v11 <- bikeshare_v11 %>%
+  filter(area == "noncluster")
+
+ggmap(map_2) +
+  geom_point(data = nc_bikeshare_v11,aes(x=start_lng, y=start_lat), 
+                 color = "red") +
+  scale_x_continuous(limits = lons, expand = no_margin) +
+  scale_y_continuous(limits = lats, expand = no_margin)
+```
+Looks like noncluster is all Z2, just outside of the covered area. Small at 44 rows, safe to eliminate.
+
+Eliminating `noncluster`
+```{r}
+bikeshare_v12 <- bikeshare_v11 %>%
+  filter(area != "noncluster")
+rm(nc_bikeshare_v11)
+```
+
+Rexamining Cross-section of Data
+```{r}
+fun_peak <- function(x) { ## this function finds the corresponding x value for a max y value of the 
+  d <- density(x)         ## density of a data frame
+  d$x[which.max(d$y)]
+}
+
+bikeshare_v12 %>%
+  group_by(area) %>%
+  summarise(group_count = n(),
+         member_freq = percent(sum(member_casual == "member")/n()),
+         avg_ride_time = round(mean(ride_length_min),2),
+         peak = fun_peak(ride_length_min)) %>%
+  mutate(group_freq = percent(group_count/sum(group_count))) %>%
+  arrange(desc(peak)) %>%
+  relocate(group_freq, .after = group_count)
+
+bikeshare_v12 %>%
+  filter(ride_length_min < 46.4) %>%
+  group_by(area) %>%
+  summarise(group_count = n(),
+         member_freq = percent(sum(member_casual == "member")/n()),
+         avg_ride_time = round(mean(ride_length_min),2),
+         peak = fun_peak(ride_length_min)) %>%
+  mutate(group_freq = percent(group_count/sum(group_count))) %>%
+  arrange(desc(group_freq)) %>%
+  relocate(group_freq, .after = group_count)
+```
+
+
+Density Plots of all 5 area clusters
+```{r}
+group_ct <- bikeshare_v12 %>%
+  filter(ride_length_min <46.4) %>%
+  group_by(area) %>%
+  summarise(group_count = n()) %>%
+  arrange(desc(group_count))
+
+fun_peak <- function(x) { ## this function finds the corresponding x value for a max y value of the 
+  d <- density(x)         ## density of a data frame
+  d$x[which.max(d$y)]
+  }
+
+vline <- bikeshare_v12 %>%
+  filter(ride_length_min < 46.4) %>%
+  group_by(area, member_casual) %>%
+  summarise(peak = fun_peak(ride_length_min))
+
+diff_table <- bikeshare_v12 %>%
+  filter(ride_length_min < 46.4) %>%
+  group_by(area) %>%
+  summarise(m_peak = fun_peak(ride_length_min[member_casual == "member"]),        
+         c_peak = fun_peak(ride_length_min[member_casual == "casual"]),
+         count = n()) %>%
+  mutate(diff = c_peak - m_peak) %>%
+  arrange(count)
+
+bikeshare_v12 %>%
+  filter(ride_length_min < 46.4) %>%
+ggplot() +
+  geom_density(aes(x = ride_length_min, fill = member_casual, alpha = .4)) +
+  expand_limits(y = .12) +
+  geom_vline(data = vline, aes(xintercept = peak)) + ## apparently facet_wrap requires the `aes` prefix to work
+  geom_label(data = diff_table, aes(x = 30,
+                                    y = .1,
+                                    label = round(diff,
+                                                  digits = 3))) +
+  facet_wrap(~area) +
+  guides(alpha = FALSE)
+```
+### Obs./Int.
+* When reading these graphs, what stands out?
+- an early hump with more members, followed by a increase in percent of casuals on the downslope
+- the difference between the peaks is a rough measure of how similar the ride length behavior of members and casuals is. Assuming ride length is a strong predictor of membership behavior, a smaller difference in a cluster means a better chance of converting casuals to members. Low differences should be targeted for marketing, as making the switch from casual to member is easier.
+- peak difference could be a rough way to identify how easy it is to convert casuals to members in an area
+
+### Hypothesis: 
+* multiple short rides within a day for a particular rider increases the likelihood of membership
+- need individual data to do this however
+
+### Followup
+* How does cluster peak difference compare across seasons?
+
+Comparing peak difference by season and cluster
+```{r}
+fun_peak <- function(x) { ## this function finds the corresponding x value for a max y value of the 
+  d <- density(x)         ## density of a data frame
+  d$x[which.max(d$y)]
+  }
+
+diff_wdw <- bikeshare_v12 %>%
+mutate(month = lubridate::month(started_at)) %>% 
+  mutate(season = case_when(
+    month %in% c(12,1,2) ~ "Winter",
+    month %in% 3:5 ~ "Spring",
+    month %in% 6:8 ~ "Summer",
+    month %in% 9:11 ~ "Fall"),
+         daytype = case_when(
+    day_of_week %in% c(1,7) ~ "wEND",
+    day_of_week %in% 2:6 ~ "wDAY")
+  ) %>%
+  filter(ride_length_min < 46.4) %>%
+  group_by(area,season,daytype) %>%
+  summarise(m_peak = fun_peak(ride_length_min[member_casual == "member"]),        
+         c_peak = fun_peak(ride_length_min[member_casual == "casual"]),
+         count = n()) %>%
+  mutate(diff = c_peak - m_peak) %>%
+  arrange(count)
+
+  ggplot(diff_wdw, aes(x = daytype, y = diff)) +
+    geom_col(position = "dodge") +
+    geom_label(aes(label = round(diff,1),color = diff)) +
+    scale_color_gradient(low = "green",high = "red") +
+    ylim(-1.5,11) +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+    facet_grid(area~season)
+  
+  ggplot(diff_wdw, aes(x = season, y = diff)) +
+    geom_col(position = "dodge") +
+    geom_label(aes(label = round(diff,1),color = diff)) +
+    scale_color_gradient(low = "green",high = "red") +
+    ylim(-1.5,10) +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+    facet_grid(daytype~area)
+  
+  ggsave("cluster_plots/season-cluster-day-diff.png")
+```
+
+Comparing `rideable_type` and `member_casual` membership rates
+```{r}
+
+fun_peak <- function(x) { ## this function finds the corresponding x value for a max y value of the 
+  d <- density(x)         ## density of a data frame
+  d$x[which.max(d$y)]
+  }
+
+vline <- bikeshare_final %>%
+  filter(ride_length_min < 46.4) %>%
+  group_by(rideable_type, member_casual) %>%
+  summarise(peak = fun_peak(ride_length_min))
+
+diff_table <- bikeshare_final %>%   ## comparing area, season, and m-c difference
+filter(ride_length_min < 46.4) %>%
+  group_by(rideable_type) %>%
+  summarise(m_peak = fun_peak(ride_length_min[member_casual == "member"]),        
+         c_peak = fun_peak(ride_length_min[member_casual == "casual"]),
+         count = n()) %>%
+  mutate(diff = c_peak - m_peak)
+
+
+bikeshare_final %>%
+  filter(ride_length_min < 46.4) %>%
+ggplot() +
+  geom_density(aes(x = ride_length_min, fill = member_casual, alpha = .4)) +
+  expand_limits(y = .12) +
+  geom_vline(data = vline, aes(xintercept = peak)) + ## apparently facet_wrap requires the `aes` prefix to work
+  geom_label(data = diff_table, aes(x = 30,
+                                    y = .1,
+                                    label = round(diff,
+                                                  digits = 3))) +
+  facet_wrap(~rideable_type) +
+  guides(alpha = FALSE)
+```
+### Obs./Int.
+* big difference between classic and electric bike peak differences, potential members in the electric bike casual crowd?
+
+Comparing peak difference by season, cluster, and rideable_type 
+```{r}
+diff_4cat <- bikeshare_final %>%   ## comparing area, season, and m-c difference
+filter(ride_length_min < 46.4) %>%                        
+  mutate(month = lubridate::month(started_at)) %>% 
+  mutate(season = case_when(month %in% c(12,1,2) ~ "Winter",
+                            month %in% 3:5 ~ "Spring",
+                            month %in% 6:8 ~ "Summer",
+                            month %in% 9:11 ~ "Fall")) %>%
+  group_by(area,season,rideable_type) %>%
+  summarise(m_peak = fun_peak(ride_length_min[member_casual == "member"]),
+         c_peak = fun_peak(ride_length_min[member_casual == "casual"]),
+         count = n()) %>%
+  mutate(diff = c_peak - m_peak) %>%
+  arrange(count)
+
+ ggplot(diff_4cat, aes(x = rideable_type, y = diff)) +
+    geom_col(position = "dodge") +
+    geom_label(aes(label = round(diff,1),color = diff)) +
+    scale_color_gradient(low = "green",high = "red") +
+    ylim(-1.5,10) +
+   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+    facet_grid(area~season)
+
+diff_3cat <- bikeshare_final %>%   ## simplifying comparison to just area and rideable type m-c difference
+  filter(ride_length_min < 46.4) %>%
+  group_by(area,rideable_type) %>%
+  summarise(m_peak = fun_peak(ride_length_min[member_casual == "member"]),
+         c_peak = fun_peak(ride_length_min[member_casual == "casual"]),
+         count = n()) %>%
+  mutate(diff = c_peak - m_peak)
+ 
+  ggplot(diff_3cat, aes(x = rideable_type, y = diff)) +
+    geom_col(position = "dodge") +
+    geom_label(aes(label = round(diff,1),color = diff)) +
+    scale_color_gradient(low = "green",high = "red") +
+    ylim(-1.5,10) +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+    facet_wrap(~area)
+  
+```
+## Obs./Int.
+* for the most part, people who ride electric bikes have a smaller member-casual ride_length difference than those who ride classic bikes
+* Ev_NW_College has the most similarity across the two bike types
+* the largest difference is in Ev_nocollege classic bikes, where classic ride time is far longer than electric bike ride time
+
+Comparing total rides by rideable_type in clusters
+```{r}
+bikeshare_final %>%
+  group_by(area,member_casual) %>%
+  summarize(classic_bike_freq = sum(rideable_type == "classic_bike")/n()) %>%
+  
+ggplot(aes(x = reorder(area,desc(classic_bike_freq)),
+           y = classic_bike_freq)) +
+  geom_col() +
+  geom_label(aes(label = percent(classic_bike_freq,1),
+                 color = classic_bike_freq)) +
+  scale_y_continuous(labels = percent_format()) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  facet_wrap(~member_casual)
+
+ggsave("cluster_plots/classic-vs-electric-comparison")
+```
+## Obs./Int.
+* for every cluster but Hyde_Park, member/casual status results in very similar classic/electric bike use
+* Hyde_Park is an outlier, with members using about a 50/50 classic-to-electric mix, and casuals using a 60/40 classic-to-electric mix
+
+Ev_nocollege is a weird zone with a density graph that does not match the others. I need to explain it to use it as a group, or fold it into Ev_NW_College for clarity.
+
+Making a heatmap of the Evanston area
+```{r}
+register_google(key = "insert key here")
+
+EV_map <- get_googlemap(center = c(lon = -87.6933607, lat = 42.0473459),
+                      zoom = 14,
+                      maptype = "terrain",
+                      color = "color")
+
+no_margin <- c(0,0)
+
+Ev_nocollege_only <- bikeshare_final %>%
+  filter(area == "Ev_nocollege")
+
+ggmap(EV_map) +
+  stat_density2d(data = Ev_nocollege_only, aes(x=start_lng, y=start_lat, fill = ..level..), 
+                 alpha = .4, 
+                 bins = 100, 
+                 geom = "polygon") +
+  scale_x_continuous(limits = c(-87.72,-87.66), expand = no_margin) +
+  scale_y_continuous(limits = c(42.025,42.068), expand = no_margin) 
+
+ggmap(EV_map) +
+  geom_point(data = Ev_nocollege_only, 
+             aes(x=start_lng, y=start_lat, fill = member_casual)) +
+  scale_x_continuous(limits = c(-87.72,-87.66), expand = no_margin) +
+  scale_y_continuous(limits = c(42.025,42.068), expand = no_margin) 
+
+ggsave("map_plots/EV_nocollege-heatmap-100bin-starts.png")
+```
+## Obs./Int.
+* most all of the start locations are at equidistant gridded points, suggesting some sort of data limitation
+
+## Followup
+* does this carry over across all months?
+
+Monthly and ride_length_min Ev_nocollege composition
+```{r}
+Ev_nocollege_only %>%
+mutate(month = lubridate::month(started_at)) %>% 
+  filter(ride_length_min < 46.4) %>%
+  group_by(area, member_casual) %>%
+  
+ggplot(aes(x = month)) +
+  geom_bar() +
+  scale_x_continuous(breaks = c(1:12))
+
+Ev_nocollege_only %>%
+  filter(ride_length_min < 46.4) %>%
+  
+ggplot(aes(x = ride_length_min)) +
+  geom_histogram()
+  
+```
+## Obs./Int.
+* monthly composition looks normal
+* ride_length_min distribution has a slight bulge around the 10-16 min. mark
+
+## Followup
+* Are the sample sizes used in the above diff comparision graphs too small when broken down by category?
+
+Checking online sample size calculator
+```{r}
+diff_wc <- bikeshare_final %>%      ## Need to make something like Diff_wdw2 but with counts for each row
+  filter(ride_length_min < 46.4,
+         area == "Ev_nocollege") %>%                        
+  mutate(month = lubridate::month(started_at)) %>% 
+  mutate(season = case_when(month %in% c(12,1,2) ~ "Winter",
+                            month %in% 3:5 ~ "Spring",
+                            month %in% 6:8 ~ "Summer",
+                            month %in% 9:11 ~ "Fall"),
+         daytype = case_when(day_of_week %in% c(1,7) ~ "wEND",
+                             day_of_week %in% 2:6 ~ "wDAY")) %>%
+  group_by(area,season,daytype) %>%
+  summarise(m_peak = fun_peak(ride_length_min[member_casual == "member"]),
+         c_peak = fun_peak(ride_length_min[member_casual == "casual"]),
+         count = n()) %>%
+  mutate(diff = c_peak - m_peak)
+
+png("cluster_plots/cnt_tbl.png", height = 50*nrow(cnt_tbl), width = 200*ncol(cnt_tbl)) ## very useful, need to remember this
+grid.table(cnt_tbl)
+
+bikeshare_final %>%  ## finding the mean for Ev_nocollege as a whole
+  filter(ride_length_min < 46.4,
+         area == "Ev_nocollege") %>%
+  group_by(area,member_casual) %>%
+  summarise(peak = fun_peak(ride_length_min),
+            count = n(),
+            std_dev = sd(ride_length_min))
+
+
+```
+## Obs./Int.
+* fruitless search, sample sizes are fine
+
+Normalizing data for regression analysis
+```{r}
+bikeshare_v12 %>% ## finding the peak of member density, and using that instead of the mean as a center
+  filter(ride_length_min < 46.4,
+         member_casual == "member") %>%
+  summarize(member_peak = fun_peak(ride_length_min)) ## peak membership at 5.588792 for all data
+
+
+bikeshare_v13 <- bikeshare_v12 %>%
+  filter(ride_length_min < 46.4) %>%
+  mutate(ride_length_diff = (ride_length_min - 5.588792)/sd(ride_length_min)) %>%
+  mutate(ride_length_nrm = (scale(ride_length_diff) %>% as.vector),
+         mem_binary = as.numeric(case_when(member_casual == "member" ~ 1,
+                                           member_casual == "casual" ~ 0)))
+
+
+cor.test(bikeshare_v13$mem_binary,bikeshare_v13$rl_nrm,
+         method = "spearman")
+
+## I do not understand this test well enough to implement it, it seems more in the realm of Data Science than Data Analytics. This is the stopping point for analysis.
+```
+
+Making the final dataset
+```{r}
+bikeshare_final <- bikeshare_v13 %>%
+  filter(ride_length_min >= 1) %>% ## done to apply the same parameter as divvy on their website
+  select(-c(mem_binary,ride_length_nrm)) ## unnecessary columns
+
+write_csv(bikeshare_final,"Data/bikeshare_final.csv")
+```
+
+Not done yet, need to check whether rideable_type ride_length_min information means members go the same distance at faster speeds when using e-bikes, suggesting increased range and a better transport option, or the alternative: casuals go the same distance and take shorter rides. I need to know bike speed, and for that I need the distance of each ride, not "as the crow flies" but as if they were riding on city streets.
+
+Creating ride distance and speed information
+```{r}
+measure <- function(lon1,lat1,lon2,lat2) {       ## Haversine distance formula
+    R <- 6378.137                                # radius of earth in Km
+    dLat <- (lat2-lat1)*pi/180
+    dLon <- (lon2-lon1)*pi/180
+    a <- sin((dLat/2))^2 + cos(lat1*pi/180)*cos(lat2*pi/180)*(sin(dLon/2))^2
+    c <- 2 * atan2(sqrt(a), sqrt(1-a))
+    d <- R * c
+    return (d * 1000)                            # distance in meters
+}
+
+bikeshare_fv2 <- bikeshare_final %>%
+  mutate(lng_m = measure(start_lng,0,end_lng,0), 
+         lat_m = measure(0,start_lat,0,end_lat),
+         ride_m = lng_m + lat_m,                  ## Manhattan distance
+         ride_ml = ride_m/1609,
+         speed_mph = ride_ml/(ride_length_min/60)) %>%
+  select(-c(lng_m,lat_m,ride_m))
+
+```
+
+Graphing summary metrics
+```{r}
+s_ml_summ <- bikeshare_fv2 %>%
+  filter(ride_length_min < 46.4,
+         speed_mph != 0) %>%
+  group_by(rideable_type,member_casual) %>%
+  summarise(peak_ml = fun_peak(ride_ml),
+            mean_ml = mean(ride_ml),
+            peak_speed = fun_peak(speed_mph),
+            mean_speed = mean(speed_mph),
+            count = n())
+
+ggplot(data = s_ml_summ,aes(x = rideable_type,
+           y = peak_ml)) +
+  geom_col() +
+  geom_label(aes(label = round(peak_ml,2),
+                 color = peak_ml)) +
+  facet_wrap(~member_casual)
+
+ggplot(data = s_ml_summ,aes(x = rideable_type,
+           y = mean_ml)) +
+  geom_col() +
+  geom_label(aes(label = round(mean_ml,2),
+                 color = mean_ml)) +
+  facet_wrap(~member_casual)
+
+ggplot(data = s_ml_summ,aes(x = rideable_type,
+           y = peak_speed)) +
+  geom_col() +
+  geom_label(aes(label = round(peak_speed,2),
+                 color = peak_speed)) +
+  facet_wrap(~member_casual)
+
+ggplot(data = s_ml_summ,aes(x = rideable_type,
+           y = mean_speed)) +
+  geom_col() +
+  geom_label(aes(label = round(mean_speed,2),
+                 color = mean_speed)) +
+  facet_wrap(~member_casual)
+
+bikeshare_fv2 %>%
+  filter(ride_length_min < 46.4,
+         ride_length_min != 0) %>%
+  group_by(rideable_type,member_casual) %>%
+  summarise(count = n()) %>%
+  
+  ggplot(aes(x = rideable_type,
+           y = count)) +
+  geom_col() +
+  geom_label(aes(label = count)) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  facet_wrap(~member_casual)
+
+
+```
+## Obs.
+* peak_ml and mean_ml show markedly different results, further investigation needed
+* peak_speed and mean_speed show virtually identical results
+
+## Int.
+* there are two effects present in the speed graphs: e-bike rides are faster, and members take faster rides
+* if people have a motor on their bike, they want to go faster
+* Hypothesis: members have somewhere to go and so are less leisurely with their speed, compared to casuals who want to enjoy the ride
+
+## Followup
+* examine the density graph of ride_ml to find why the mean and peak are dissimilar
+
+Graphing ride_ml density and speed_mph density
+```{r}
+bikeshare_fv2 %>%
+  filter(ride_length_min < 46.4,
+         ride_ml != 0) %>%
+ggplot() +
+  geom_density(aes(x = ride_ml, fill = member_casual, alpha = .4)) +
+  expand_limits(y = .6) +
+  scale_x_continuous(limits = c(0,8)) +
+  geom_vline(data = s_ml_summ, aes(xintercept = peak_ml)) + 
+  geom_label(data = s_ml_summ, aes(x = 4,
+                                    y = .1,
+                                    label = round(peak_ml,
+                                                  digits = 3))) +
+  facet_wrap(~rideable_type) +
+  guides(alpha = FALSE)
+
+bikeshare_fv2 %>%
+  filter(ride_length_min < 46.4,
+         ride_ml != 0) %>%
+ggplot() +
+  geom_density(aes(x = speed_mph, fill = member_casual, alpha = .4)) +
+  expand_limits(y = .4) +
+  scale_x_continuous(limits = c(0,20)) +
+  geom_vline(data = s_ml_summ, aes(xintercept = peak_speed)) + 
+  geom_label(data = s_ml_summ, aes(x = 10,
+                                    y = .3,
+                                    label = round(peak_speed,
+                                                  digits = 3))) +
+  facet_wrap(~rideable_type) +
+  guides(alpha = FALSE)
+
+```
+## Obs./Int.
+* the electric bike graph looks jagged like a saw. This is may be a result of charging stations being placed at roughly equal distances, and the spikes are riding 1, 2, etc. stations away.
+* speed_mph follows a roughly normal distribution, so peak and mean are close
+
+## Followup
+* In conclusion, members and casuals both take slightly longer rides on electric bikes than they would on classic bikes. Otherwise, the member-casual distance of ride taken is the same. Members tend to go faster than casuals, but share a similar distance traveled by bike. All people take longer rides on e-bikes. 
+
+Does pricing in z1 and z2 affect e-bike usage?
+```{r}
+bikeshare_fv2 %>%                                      ## ungrouped by area
+  filter(ride_length_min < 46.4,
+         ride_length_min != 0) %>%
+  group_by(member_casual) %>%
+   summarise(group_count = n(),
+             ebike_percent = percent(sum(rideable_type == "electric_bike")/n())) %>%
+  mutate(group_freq = percent(group_count/sum(group_count)))
+
+bikeshare_fv2 %>%                                      ## Z1 and Z2 together to check price
+  filter(ride_length_min < 46.4,
+         speed_mph != 0) %>%
+  mutate(area_grouped = case_when(area == "Ev_nocollege" ~ "Z1",
+                                  area == "Z1" ~ "Z1",
+                                  area == "Ev_NW_College" ~ "Z1",
+                                  area == "Z2_nocollege" ~ "Z2",
+                                  area == "Hyde_Park" ~ "Z2")) %>%
+  group_by(area_grouped,member_casual) %>%
+   summarise(group_count = n(),
+             ebike_percent = percent(sum(rideable_type == "electric_bike")/n()),
+             mean_speed = mean(speed_mph),
+             mean_rl = mean(ride_length_min),
+             peak_rl = fun_peak(ride_length_min),
+             mean_distance = mean(ride_ml),
+             percent_of_highest_dist = percent(mean_distance/2.460623))%>%
+  mutate(group_freq = percent(group_count/sum(group_count)))
+
+bikeshare_fv2 %>%                                      ## regular area clusters
+  filter(ride_length_min < 46.4,
+         speed_mph != 0) %>%
+  group_by(area,member_casual) %>%
+   summarise(group_count = n(),
+             ebike_percent = sum(rideable_type == "electric_bike")/n()) %>%
+  mutate(group_freq = percent(group_count/sum(group_count))) %>%
+  
+  ggplot(aes(x = area,
+             y = ebike_percent,
+             fill = member_casual)) +
+           geom_col(position = "dodge") +
+           theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+           scale_y_continuous(labels = percent_format(), limits=c(0,1))
+
+```
+## Obs.
+* large area difference in e-bike usage, Z2 uses ebikes much more than Z1
+* small difference between members and casuals, members use e-bikes less
+
+
+## Discussion
+What impact do area and membership status have on cost?
+As an example the cost of a six minute e-bike ride in each zone, for a member or a casual, contrasted with the classic bike cost:
+
+Z1/C: 3.30 + 1.20 + 2 =    6.50
+classic alternative =      3.30
+
+Z1/M: none + 0.90 + 2 =    2.90
+classic alternative =      0.00
+
+Z2/C: 3.30 + none + 0 =    3.30
+classic alternative =      3.30
+
+Z2/M: none + none + 0 =    0.00
+classic alternative =      0.00
+
+## Interpretation
+E-bike vs. classic bike use is not about the absolute cost, but the relative cost of using the other mode of transport. Z2 riders have no cost difference between an electric or classic bike, and so use the higher end option of e-bikes more frequently. Z1 riders may decide to take a bike ride, and having locked in on that decision consider cost, and find e-bikes too expensive for what they provide.
+
+Z1 members receive a discount on e-bike use of more than 50% when compared with Z1 casuals, but still use e-bikes less. This could be that members take more bike rides per-week, and thus the yearly cost of e-bike use for an individual is higher for members than casuals, and so reduced member use of e-bikes makes sense. For verification of this hypothesis, individual rider data is needed.
+
+More time spent on a bike ride seems to result in increased preference for e-bikes, but is a much smaller factor than the relative cost of e-bike vs. classic.
+
+## Hypothesis
+* Cost is preventing members from using e-bikes, and casuals show a preference for e-bikes. Give members a further discount on e-bikes and casuals may buy a membership to use the e-bikes. 
+* The conclusions drawn of membership and price interactions do not account for the "Divvy for Everyone" program, which has lower costs than membership. Any conclusion about relative vs. absolute cost would need a separate category for "D4E members".
+
+
+Final cluster reference info
+```{r}
+bikeshare_fv2 %>%
+  group_by(area) %>%
+  summarise(group_count = n(),
+         member_freq = percent(sum(member_casual == "member")/n()),
+         avg_ride_time = round(mean(ride_length_min),2),
+         peak = fun_peak(ride_length_min)) %>%
+  mutate(group_freq = percent(group_count/sum(group_count))) %>%
+  arrange(desc(group_freq)) %>%
+  relocate(group_freq, .after = group_count)
+
+bikeshare_fv2 %>%
+  filter(area == "Z1" | area == "Z2_nocollege") %>%
+  mutate(month = lubridate::month(started_at)) %>% 
+  mutate(season = case_when(
+    month %in% c(12,1,2) ~ "Winter",
+    month %in% 3:5 ~ "Spring",
+    month %in% 6:8 ~ "Summer",
+    month %in% 9:11 ~ "Fall"),
+         daytype = case_when(
+    day_of_week %in% c(1,7) ~ "wEND",
+    day_of_week %in% 2:6 ~ "wDAY"),
+    lng_delta = start_lng - end_lng,
+    lat_delta = start_lat - end_lat) %>%
+  group_by(area,daytype) %>%
+  summarise(group_count = n(),
+         member_freq = percent(sum(member_casual == "member")/n()),
+         ebike_freq = percent(sum(rideable_type == "electric_bike")/n()),
+         mean_speed = round(mean(speed_mph, na.rm = TRUE),2),
+         mean_ride_time = round(mean(ride_length_min),2),
+         mean_ride_distance = round(mean(ride_ml, na.rm = TRUE),2),
+         peak = round(fun_peak(ride_length_min),2),
+         mean_lng_delta = mean(lng_delta,na.rm = TRUE),
+         mean_lat_delta = mean(lat_delta,na.rm = TRUE)) %>%
+  mutate(group_freq = percent(group_count/sum(group_count))) %>%
+  relocate(group_freq, .after = group_count)
+
+bikeshare_fv2 %>%
+  group_by(area,member_casual) %>%
+  summarise(group_count = n(),
+            ebike_freq = percent(sum(rideable_type == "electric_bike")/n()),
+            avg_ride_time = round(mean(ride_length_min),2),
+           peak = fun_peak(ride_length_min)) %>%
+  mutate(group_freq = percent(group_count/sum(group_count))) %>%
+  relocate(group_freq, .after = group_count) %>%
+  arrange(avg_ride_time)
+```
+## Obs./Int.
+### Z2_nocollege compared to Z1
+* much higher use of e-bikes in Z2
+* similar weekend member frequency, lower weekday member frequency in Z2
+* Z2 riders go faster on average, especially on weekends
+* Z2 weekday and weekend riders have more similar speeds than Z1, indicating they may ride in the same environment
+* weekend ride times similar across both groups, weekday ride times different
+* mean ride distance higher for Z2 than Z1
+* 
+
+How did I make the Ev_nocollege and Ev_NW_College categories?
+```{r}
+register_google(key = "insert key here")
+
+
+Evanston <- bikeshare_fv2 %>%
+  filter(area == "Ev_NW_College" | area == "Ev_nocollege")
+
+ggmap(EV_map) +
+  geom_point(data = Evanston,aes(x=start_lng, y=start_lat, 
+                 color = area)) +
+   scale_x_continuous(limits = c(-87.72,-87.66), expand = no_margin) +
+  scale_y_continuous(limits = c(42.025,42.068), expand = no_margin)
+```
+Looks like I drew a solid lng line, not the best for selecting college-specific info. I must revise the area for "Ev_NW_College" and "Ev_nocollege"
+
+The new boundaries are as follows:
+* Ev_NWU       - Bordered by Lake St. in the South - (42.044047 lat)
+               - Maple Ave. in the West - (-87.684714 lng)
+               
+* Ev_nocollege - Bordered by W. Howard St. in the South - (42.0219536 lat)
+               - excluding the Ev_NWU area
+               
+* Z1 - Bordered by W. Pershing Rd in the South - (41.822978 lat)
+     - N Western Ave. in the West - (-87.690118 lng)
+     - W Howard St. in the North - (42.0219536 lat)
+     - these borders omit a small chunk of the north of Z1
+
+* Z2 - Out to Indiana state line in the East - (-87.524491 lng)
+     - W Howard St. in the North - (42.0219536 lat)
+               
+```{r}
+bikeshare_fv3 <- bikeshare_fv2 %>%
+  mutate(area = case_when(start_lat > 41.822978 & start_lat < 42.0219536 &
+                            start_lng > -87.690118 & start_lng < -87.593127 ~ "Z1",
+                          start_lat > 41.77 & start_lat < 41.82 &
+                            start_lng > -87.61 & start_lng < -87.56 ~ "Hyde_Park",
+                          start_lat > 41.643837 & start_lat < 42.0219536 &
+                            start_lng > -87.836541 & start_lng < -87.524491 ~ "Z2_nocollege",
+                          start_lat > 42.044047 & start_lng > -87.684714 &
+                            start_lat < 42.07 & start_lng < -87.65 ~ "E_NW_College",
+                          start_lat > 42.0219536 ~ "Ev_nocollege",
+                          TRUE ~ "noncluster"))
+
+map <- get_googlemap(center = c(lon = -87.7104663, lat = 41.9018514),
+                      zoom = 10,
+                      maptype = "terrain",
+                      color = "color")
+
+nc_bikeshare_fv3 <- bikeshare_fv3 %>%
+  filter(area == "noncluster")
+
+ggmap(map) +
+  geom_point(data = nc_bikeshare_fv3,aes(x=start_lng, y=start_lat), 
+                 color = "red") +
+  scale_x_continuous(limits = lons, expand = no_margin) +
+  scale_y_continuous(limits = lats, expand = no_margin)
+
+bikeshare_fv3 %>%
+  group_by(area) %>%
+  summarise(group_count = n(),
+            ebike_freq = percent(sum(rideable_type == "electric_bike")/n()),
+            avg_ride_time = round(mean(ride_length_min),2),
+           peak = fun_peak(ride_length_min)) %>%
+  mutate(group_freq = percent(group_count/sum(group_count))) %>%
+  relocate(group_freq, .after = group_count) %>%
+  arrange(avg_ride_time)
+  
+```
+
+
+Cleaning up table names
+```{r}
+bikeshare_v14 <- bikeshare_fv2
+bikeshare_v15 <- bikeshare_fv3
+rm(bikeshare_fv3)
+```
+
+Now lets compare the revised data and previously used data
+```{r}
+bikeshare_v15 <- bikeshare_v14 %>%                                                       ## renaming to make comparison easier
+  mutate(area = case_when(start_lat > 41.822978 & start_lat < 42.0219536 &
+                            start_lng > -87.690118 & start_lng < -87.593127 ~ "Z1",
+                          start_lat > 41.77 & start_lat < 41.82 &
+                            start_lng > -87.61 & start_lng < -87.56 ~ "Hyde_Park",
+                          start_lat > 41.643837 & start_lat < 42.0219536 &
+                            start_lng > -87.836541 & start_lng < -87.524491 ~ "Z2_nocollege",
+                          start_lat > 42.044047 & start_lng > -87.684714 &
+                            start_lat < 42.07 & start_lng < -87.65 ~ "Ev_NW_College",
+                          start_lat > 42.0219536 ~ "Ev_nocollege",
+                          TRUE ~ "noncluster"))
+bikeshare_v14 %>%
+  filter(ride_length_min < 46.4,
+         area == "Ev_nocollege" | area == "Ev_NW_College") %>%
+  group_by(area,member_casual) %>%
+  summarise(group_count = n(),
+            ebike_freq = percent(sum(rideable_type == "electric_bike")/n()),
+            mean_speed = round(mean(speed_mph, na.rm = TRUE),2),
+            mean_ride_time = round(mean(ride_length_min),2),
+            mean_ride_distance = round(mean(ride_ml, na.rm = TRUE),2),
+            peak = round(fun_peak(ride_length_min),2)) %>%
+  mutate(group_freq = percent(group_count/sum(group_count))) %>%
+  relocate(group_freq, .after = group_count)
+
+bikeshare_v15 %>%
+  filter(ride_length_min < 46.4,
+         area == "Ev_nocollege" | area == "Ev_NW_College") %>%
+  group_by(area,member_casual) %>%
+  summarise(group_count = n(),
+            ebike_freq = percent(sum(rideable_type == "electric_bike")/n()),
+            mean_speed = round(mean(speed_mph, na.rm = TRUE),2),
+            mean_ride_time = round(mean(ride_length_min),2),
+            mean_ride_distance = round(mean(ride_ml, na.rm = TRUE),2),
+            peak = round(fun_peak(ride_length_min),2)) %>%
+  mutate(group_freq = percent(group_count/sum(group_count))) %>%
+  relocate(group_freq, .after = group_count)
+```
+
+Reference
+```{r}
+bikeshare_v15 %>%
+  filter(ride_length_min < 46.4,
+         speed_mph != 0) %>%
+  group_by(area,member_casual) %>%
+  summarise(group_count = n(),
+            ebike_freq = percent(sum(rideable_type == "electric_bike")/n()),
+            mean_speed = round(mean(speed_mph, na.rm = TRUE),2),
+            mean_ride_time = round(mean(ride_length_min),2),
+            mean_ride_distance = round(mean(ride_ml, na.rm = TRUE),2),
+            peak = round(fun_peak(ride_length_min),2)) %>%
+  mutate(group_freq = percent(group_count/sum(group_count))) %>%
+  relocate(group_freq, .after = group_count)
+```
+Readjusting Hyde Park boundaries
+```{r}
+bikeshare_v16 <- bikeshare_v15 %>%                                                       
+  mutate(area = case_when(start_lat > 41.822978 & start_lat < 42.0219536 &
+                            start_lng > -87.690118 & start_lng < -87.593127 ~ "Z1",
+                          start_lat > 41.780428 & start_lat < 41.802297 &
+                            start_lng > -87.615707 & start_lng < -87.586710 ~ "Hyde_Park", ## Hyde Park boundaries were eyeballed before, now by street
+                          start_lat > 41.643837 & start_lat < 42.0219536 &
+                            start_lng > -87.836541 & start_lng < -87.524491 ~ "Z2_nocollege",
+                          start_lat > 42.044047 & start_lng > -87.684714 &
+                            start_lat < 42.07 & start_lng < -87.65 ~ "Ev_NW_College",
+                          start_lat > 42.0219536 ~ "Ev_nocollege",
+                          TRUE ~ "noncluster"))
+
+bikeshare_v16 %>% ## checking
+  group_by(area) %>%
+  summarize()
+```
+New boundaries:
+
+* Hyde_Park    - E. 63rd St. in the South - (41.780428 lat)
+               - S. Martin Luther King Dr. in the West - (-87.615707 lng)
+               - E. Hyde Park Blvd in the North - (41.802297 lat)
+               - S. Stony Is Ave. in the East - (-87.586710 lng)
+
+
+* Ev_NWU       - Bordered by Lake St. in the South - (42.044047 lat)
+               - Maple Ave. in the West - (-87.684714 lng)
+               
+* Ev_nocollege - Bordered by W. Howard St. in the South - (42.0219536 lat)
+               - excluding the Ev_NWU area
+               
+* Z1 - Bordered by W. Pershing Rd in the South - (41.822978 lat)
+     - N Western Ave. in the West - (-87.690118 lng)
+     - W Howard St. in the North - (42.0219536 lat)
+     - these borders omit a small chunk of the north of Z1
+
+* Z2 - Out to Indiana state line in the East - (-87.524491 lng)
+     - W Howard St. in the North - (42.0219536 lat)
+
+Reference:
+```{r}
+bikeshare_v16 %>%
+filter(ride_length_min < 46.4,
+         speed_mph != 0) %>%
+  group_by(area) %>%
+  summarise(group_count = n(),
+            ebike_freq = percent(sum(rideable_type == "electric_bike")/n()),
+            mean_speed = round(mean(speed_mph, na.rm = TRUE),2),
+            mean_ride_time = round(mean(ride_length_min),2),
+            mean_ride_distance = round(mean(ride_ml, na.rm = TRUE),2),
+            peak = round(fun_peak(ride_length_min),2)) %>%
+  mutate(group_freq = percent(group_count/sum(group_count))) %>%
+  relocate(group_freq, .after = group_count)
+```
+
+Removing `ride_length_dur`
+```{r}
+bikeshare_v17 <- bikeshare_v16 %>%
+  select( -c(ride_length_dur))
+
+write_csv(bikeshare_v17, "bikeshare_v17.csv")
+```
+Comparing `ride_ml` by rideable type
+```{r}
+bikeshare_v17 %>%
+  filter(ride_ml != 0) %>%
+  group_by(rideable_type) %>%
+  summarise(mean_ml = mean(ride_ml)) %>%
+  mutate(percent = percent(mean_ml/mean_ml[rideable_type == "classic_bike"]))
+
+
+```
+
+## Final Conclusions
+Casuals and members differ in several ways
+* members ride during weekdays more than casuals
+* member riding behavior is less seasonal than casuals
+* members and casuals bike the same distances
+* members and casuals have different behavior in clusters
+* members ride faster than casuals
+* everyone rides faster on e-bikes
+
+These differences in behavior have implications for a marketing campaign attempting to convert casuals to members. The guiding philosophy of such a campaign will be to identify member-like behavior in casuals, and appeal to them for membership.
+
+### Weekday Bike Use
+Members to use bikes more during the weekday than casuals, who prefer the weekend. This is likely due to riders using the bikes for work/school. This trend is especially prominent in the Hyde_park cluster around the university campus, where students have reason not only for home-work-home transit, but multiple short trips from class to class, nearby restaurants, and study locations. It is worth mentioning that without individual data to confirm how many trips per person are taken per day or more detailed individual information, this hypothesis can only go so far.
+
+### Seasonal Bike Use
+Chicago winters are harsh, and total rides across both members and casuals decrease outside of temperate months and increase when weather is pleasant. Anecdotal observation of recorded temperatures show that total rides drop harshly when the temperature reaches freezing or below, likely snow and ice act as strong barrier to anyone biking Chicago streets. Though both members and casuals are affected by the seasons, members have less of an increase than casuals in temperate months, and less of a decrease in colder months. This year-round level behavior taken with the weekday use pattern seems to suggest a clear theme: members ride more because it fits their lifestyle, casuals ride more when it is pleasant outside.
+
+### Distance and speed
+Across all area clusters, members preferred a shorter ride time than casuals. Though non-outlier ride times vary by 15-16 min. across clusters, peak membership rate occurs somewhere around 5-6 min. That distance by bicycle in downtown Chicago would take double the time if going by foot, and works out to a distance of about 16 city blocks flat-out, 2-4 blocks with traffic and stoplights. Above and below the magic peak, member bike usage decreases; rides of longer or shorter distance than the peak amount are attractive to those with memberships.
+
+Considering that bikes compete with walking, electric scooters, public transportation, and automobile use, longer or shorter distances probably see potential riders consider using an alternative means of transport instead. Members and casuals have almost identical ride distances, but members tend to speed by their scenery to a destination.
+
+### E-bikes and Classic bikes
+E-bike vs. classic bike use is not about the absolute cost, but the relative cost of using the other mode of transport. Z2 riders have no cost difference between an electric or classic bike, and so use the higher end option of e-bikes more frequently. Z1 riders may decide to take a bike ride, and having locked in on that decision consider cost, find e-bikes too expensive for what they provide, and take a classic bike instead.
+
+Z1 members receive a discount on e-bike use of more than 50% when compared with Z1 casuals, but still use e-bikes less. This could be that members take more bike rides per-week, and thus the yearly cost of e-bike use for an individual is higher for members than casuals, and so reduced member use of e-bikes makes sense. For verification of this hypothesis, individual rider data is needed.
+
+People who rent e-bikes seem to like riding longer than those who do not, but is a much smaller factor than the relative cost of e-bike vs. classic.
+
+
+### Location Clusters
+
+#### Zone 1 (non-Evanston)
+Though the city of Evanston has been designated "Zone 1" as far as payment goes, this category consists of the pre-Evanston zone, central Chicago. Zone 1 is the epicenter of all the clusters, and constituted 88% of all rides from 2020/09 to 2021/09. With a sprawl of waterfront tourist destinations and urban density, many essentials are within biking distance. Though this cluster represents the majority of Divvy customers by a large margin, it is not a good target for a marketing campaign. Divvy bikes in the streets and an optimal environment for using them mean most people in this cluster know about the bikeshare and its uses. To convince casuals to buy a membership in this zone, membership needs to offer a better deal on e-bikes and communicate it clearly.
+
+#### Hyde Park
+Home to the University of Chicago and perched atop the connector of Washington and Jackson Park, Hyde Park is prime biking area. The residents of this cluster include many students of the University, and the nature of a college campus and student lifestyle needs make this the cluster with the highest rider membership rate, an impressive 63%. Despite being a small few city blocks, it has about a third of all rides in Zone 2, and for that reason is considered a separate cluster. 
+
+#### Northwestern University
+As to clusters, Evanston Northwestern University displays very similar behavior in ride length preference between casuals and members. The casual ride time is very similar to the member ride time in Evanston, more than any other cluster. Northwestern  is a prime target for this reason, and with a 2015 enrollment of 21,000 compared to University of Chicago's 14,467 in the same year. Northwestern University area could be the next Hyde Park.
+
+#### Non-college Evanston
+Evanston non-college is the smallest cluster by total rides, identified mainly because it was within the bounds of Zone 1 but not the stronger location cluster of Northwestern. The small number of riders and comparatively new age of its bikeshare program might indicate that data is too sparse to draw conclusions, but the demographics of Evanston indicate it may not be the best place for a bikeshare to grow. 
+
+Evanston is wealthy, with a median household income of about [$79,000](https://datausa.io/profile/geo/evanston-il/) compared to Chicago's  median of [$62,000](https://datausa.io/profile/geo/chicago-il), and though the city has an interest in building ridable streets and bicycle infrastructure, they are not an optimal market for expansion. Some [1,210](https://datausa.io/profile/geo/evanston-il/#housing) households chose bicycles as their most common commute in 2019, accounting for a .043 share of the total. This was some 3 years after Divvy started operation in the city. During the same period Chicago saw [20,300](https://datausa.io/profile/geo/chicago-il#housing) households, a .015 share of the total. 
+
+Some math:
+
+Divvy rides per riding household in Evanston
+```{r}
+((31698 + 7586)   ## total Divvy rides in Evanston
+/1210)            ## total riding households
+```
+Divvy rides per riding household in Chicago
+```{r}
+((5051784 - (31698 + 7586))  ## total Divvy rides in Chicago
+ /20300)                     ## total riding households
+```
+The math above shows that despite having Evanston higher share of households using bikes as their most common commute than Chicago by a large amount, they use Divvy less. Owing to their wealth, it is possible that they use their personal bikes instead of Divvy for transportation, a habit that may continue as long as Evanston remains wealthy. The non-college population of Evanston is a poor target for Divvy marketing. 
+
+#### Zone 2
+This analysis separated the Hyde Park area from Zone 2 as distinct. Zone 2 has several characteristics that make it distinct from Zone 1. Zone 2 is less dense than central Chicago and Zone 1. Its special pricing makes it equally cost effective to use an e-bike or a classic bike, which in addition to its lower density fits in with its high average distance per ride. People in Zone 2 ride faster, longer, and have access to the least expensive forms of using Divvy. Strategies to raise membership in this cluster might highlight the benefits of e-bikes, which appeal to the Zone 2 habits of going longer distances faster.
+  
+         
+## Limitations/Further information needs
+
+### Individual data
+Since membership is a flat yearly fee for rides below a certain duration, its main pitch to casuals is that of bulk discount: more rides for less money. Even without individual data, this alone means casuals who ride multiple days per week, or multiple times per day are prime targets for advertising. Frequently updated geotracking information coupled with rider profile behavior could add support to the "members have a commute" hypothesis. 
+
+Other information about individuals like occupation, age, residence, yearly earnings, and transportation mode habits could be used to more precisely target advertising and identify customer segments and needs. One of the key issues for converting casuals to members is knowing if a casual is a resident who could use a membership, or an out-of-towner who would not buy a membership, no matter their casual use patterns. Separating resident casuals from nonresident casuals would be key in any targeted marketing effort, and without individualized data this cannot be done.
+
+
+

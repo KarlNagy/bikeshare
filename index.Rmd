@@ -3,7 +3,9 @@ title: "Bikeshare Report"
 author: "Karl Nagy"
 date: "01/24/2021"
 output: 
-  html_document
+  prettydoc::html_pretty:
+    theme: architect
+    hightlight: github
 ---
 ```{r setup, include=FALSE} 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE,error = FALSE, echo = FALSE) 
@@ -11,7 +13,7 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE,error = FALSE, echo = FAL
 
 
 # Key Questions
-* What differentiates annual members and casual riders?
+* What differentiates annual members from casual riders?
 * How can casual riders be converted to annual members to drive future growth?
 
 # Summary
@@ -24,40 +26,20 @@ Casuals and members differ in several ways
 
 These differences in behavior have implications for a marketing campaign attempting to convert casuals to members. The guiding philosophy of such a campaign will be to identify member-like behavior in casuals, and appeal to them for membership.
 
-# Data Sources and Security
-
-Historical bikeshare use [dataset](https://divvy-tripdata.s3.amazonaws.com/index.html) obtained from *Divvy*, a Chicago-based bikeshare company  
-
-Google drive used for storage of all files
 
 
 
+# Data Sources and Security ([RAW](https://divvy-tripdata.s3.amazonaws.com/index.html))([CLEANED](https://drive.google.com/file/d/1ZiEa7xBAaW0IXlQh97FCYMYOdkRuHL6u/view?usp=sharing))
 
-# Data Cleaning and Manipulation
+Historical bikeshare use data obtained from *Divvy*, a Chicago-based bikeshare company. Private Google drive storage was used for storage of all files
+
+
+
+
+# Data Cleaning and Manipulation ([CHANGELOG](https://github.com/KarlNagy/bikeshare/blob/main/CHANGELOG.md))
+
 Initial cleaning and manipulation was done in BigQuery SQL editor, then transferred to R.
 
-
-
-
-## BigQuery SQL Data Cleaning
-
-###  Added
-* `day_of_week` column created from `started_at`, with integers 1-7 corresponding to Sunday-Saturday
-
-###  Changed
-* 2020.10 and 2020.11 tables use integer values for `start_station_id` and `end_station_id` columns, changed to string values to match the other tables
-
-###  Fixed
-* removed rows where `started_at` occurred after `ended_at`
-
-
-
-**End product:** bikeshare_v4.csv
-
-
-
-
-## Data Cleaning and Wrangling in R
 
 ### Packages Used
 The following were used when in R
@@ -69,6 +51,7 @@ install.packages("pwr", repos='http://cran.us.r-project.org')
 install.packages("hrbrthemes", repos='http://cran.us.r-project.org')
 install.packages("googledrive", repos='http://cran.us.r-project.org')
 install.packages("kableExtra", repos='http://cran.us.r-project.org')
+install.packages("prettydoc", repos='http://cran.us.r-project.org')
 ```
 
 ```{r, echo = TRUE}
@@ -85,91 +68,9 @@ library(pwr)
 library(hrbrthemes)
 library(googledrive)
 library(kableExtra)
+library(prettydoc)
 ```
-### bikeshare_v5
-* Added: `ride_length` column created from `ended_at` - `started_at` columns
 
-### bikeshare_v6
-* Changed: replaced NA values of start and end station names and IDs with "undocked"
-
-### bikeshare_v7
-* Changed: `rideable_type` instances of "docked bike" to "classic_bike"
-
-### bikeshare_v8
-* Changed: converted `ride_length` to a `lubridate` duration object for easier reading
-
-### bikeshare_v9
-* Added: created `ride_length_min`, ride_length expressed in minutes as a numeric datatype
-* Changed: `ride_length` to `ride_length_dur` for clarity
-
-### bikeshare_v10
-* Fixed: removed outlier rows with a `ride_length_dur` longer than 1440 minutes(1 day) or shorter than 30 seconds
-
-### bikeshare_v11
-* Added: `area` column with "Hyde_Park", "Evanston", "Z1", "Z2", and "noncluster" categories by setting boundaries of  `start_lat` and `start_lng` values, based on [Divvy's Zone classification](https://account.divvybikes.com/map) and interpreted below
-
-   Z1:  start_lat > 41.822978 & start_lat < 42.0219536 & start_lng > -87.690118 & start_lng < -87.593127
-   
-   Z2_nocollege:   start_lat > 41.643837 & start_lat < 42.0219536 & start_lng > -87.836541 & start_lng < -87.524491 & isFALSE(start_lat > 41.77 & start_lat < 41.82 & start_lng > -87.61 & start_lng < -87.56)
-   
-   Hyde Park: start_lat > 41.77 & start_lat < 41.82 & start_lng > -87.61 & start_lng < -87.56
-   
-   Evanston:  start_lat > 42.0219536 & start_lat < 42.07 & start_lng > -87.69 & start_lng < -87.65
-                  
-
-
-### bikeshare_v12
-* Removed: examined "noncluster" rows and found them to be 44 rows outside of Zone 2 boundaries
-
-### bikeshare_v13
-* Fixed: removed rows less than 1 minute, in keeping with Divvy's policy on their data
-
-### bikeshare_v14
-* Added: calculated the Manhattan distance between start and end lat-lng data columns, stored in miles as `ride_ml`
-* Added: calculated average speed of ride  from `ride_length_min` and `ride_ml`, stored in mph as `speed_mph`
-
-### bikeshare_v15
-* Changed: `area` column parameters altered to distinguish Evanston from Northwestern University
-
- * Z1: start_lat > 41.822978 & start_lat < 42.0219536 & start_lng > -87.690118 & start_lng < -87.593127
-   
- * Hyde_Park: start_lat > 41.77 & start_lat < 41.82 & start_lng > -87.61 & start_lng < -87.56
-   
- * Z2_nocollege: start_lat > 41.643837 & start_lat < 42.0219536 & start_lng > -87.836541 & start_lng < -87.524491
-   
- * E_NWU: start_lat > 42.044047 & start_lng > -87.684714 & start_lat < 42.07 & start_lng < -87.65
-   
- * E_nocollege: start_lat > 42.0219536
-                 
-    The E_nocollege includes a section that technically is part of Z1, a 2x4 block section just south of Cavalry Catholic Cemetery
-
-### bikeshare_v16
-* Changed: `E_nocollege` > `Ev_nocollege`
-           `E_NWU` > `Ev_NW_College`
-* Fixed: readjusted Hyde_Park boundaries to specific streets
-  * `Hyde_Park`    - E. 63rd St. in the South - (41.780428 lat)
-                   - S. Martin Luther King Dr. in the West - (-87.615707 lng)
-                   - E. Hyde Park Blvd in the North - (41.802297 lat)
-                   - S. Stony Is Ave. in the East - (-87.586710 lng)
-                 
-  * `Ev_NW_College`- Bordered by Lake St. in the South - (42.044047 lat)
-                   - Maple Ave. in the West - (-87.684714 lng)
-               
- * `Ev_nocollege`  - Bordered by W. Howard St. in the South - (42.0219536 lat)
-                   - excluding the `Ev_NW_College` area
-                   
- * `Z1`            - Bordered by W. Pershing Rd in the South - (41.822978 lat)
-                   - N Western Ave. in the West - (-87.690118 lng)
-                   - W Howard St. in the North - (42.0219536 lat)
-                   - these borders omit a small chunk of the north of `Z1`, 
-                      assigning it instead to `Ev_nocollege`
-                      
- * `Z2_nocollege`  - Out to Indiana state line in the East - (-87.524491 lng)
-                   - W Howard St. in the North - (42.0219536 lat)
-                   - excludes `Z1` and `Hyde_Park`
-
-### bikeshare_v17
-* Removed: `ride_length_dur` was no longer needed 
 ```{r}
 
 drive_download(
@@ -237,6 +138,7 @@ ggplot(aes(x=day_name_2,
 
 
 ```
+ 
 Members use bikes more during the weekday than casuals, who prefer the weekend. This is likely due to members using the bikes for work/school, and casuals for pleasure. The trend is especially prominent in the 'Hyde_park` cluster around the university campus, where students have reason not only for home-work-home transit, but multiple short trips from class to class, nearby restaurants, and study locations. It is worth mentioning that without individual data to confirm how many trips per person are taken per day or more detailed individual information to confirm a lifestyle pattern, this hypothesis can only go so far.
 
 
@@ -339,9 +241,10 @@ ggplot(aes(x = ride_ml,
 
 
 ```
+ 
 Members and Casuals tend to cover a similar distance, though Members tend to shorten their ride by going faster than Casuals.
 
-Considering that Chicago bikeshare rides compete with walking, electric scooters, public transportation, and automobile use, longer or shorter distances further from the *peak of 0.75 to 1.5mi.* may cause potential riders to use an alternative means of transport instead. 
+Chicago bikeshare rides compete with walking, electric scooters, public transportation, and automobile use. Distances further from the *peak of 0.75 to 1.5mi.* may cause potential riders to use an alternative means of transport instead. 
 
 
 
@@ -372,8 +275,38 @@ ggplot(aes(x = member_casual,
        subtitle = "Casuals have only a slight preference",
        caption = "Data: Oct-2020 to Oct-2021") +
   theme_ipsum()
+```
+ 
+The difference between members and casual in e-bike use is measurable, but not particularly large. This is strange, considering that membership offers significant savings on e-bike use. As we will see though, the comparative costs work out much differently.
 
+Consider the following scenario:
 
+* a six minute e-bike ride (approximate ride time)
+* the bike is returned to a dock (no extra fee)
+
+```{r}
+
+rideable <- c("E-bike","Classic")
+Z1_Casual <- c("$4.50","$3.30")
+Z1_Member <- c("$0.90","$0.00")
+Z2_Casual <- c("$3.30","$3.30")
+Z2_Member <- c("$0.00","$0.00")
+
+comparison <- data.frame(rideable,Z1_Casual,Z1_Member,Z2_Casual,Z2_Member)
+
+comparison %>%
+  select(rideable,everything()) %>%
+  arrange(desc(rideable)) %>%
+  kable(col.names = c("","Casual","Member","Casual","Member")) %>%
+  column_spec(c(1:5), border_right = T) %>%
+  kable_styling(bootstrap_options = "striped", full_width = FALSE) %>%
+  collapse_rows(columns = 1) %>%
+    add_header_above(c(" " = 1, "Z1" = 2, "Z2" = 2))
+```
+ 
+Across Casuals and Members, Z1 riders face a difference in price between e-bikes and classic bikes. They must consider whether they need higher performance at a higher cost. Z2 riders do not face that decision, and pay the same price regardless of rideable type. Rideable preference by zone showcases this difference.
+
+```{r}
 bikeshare_v17 %>%                                     
   filter(ride_length_min < 46.4,
          ride_ml != 0) %>%
@@ -407,33 +340,10 @@ ggplot(aes(x = area_grouped,
   theme_ipsum() 
 
 ```
+ 
 E-bike vs. classic bike use is not about the absolute cost, but the relative cost of using the other mode of transport. 
 
-Consider the example the cost of a six minute e-bike ride in each zone, with the bike being returned to a dock, for a member or a casual, contrasted with the classic bike alternative cost:
-
-```{r}
-
-rideable <- c("E-bike","Classic")
-Z1_Casual <- c("$4.50","$3.30")
-Z1_Member <- c("$0.90","$0.00")
-Z2_Casual <- c("$3.30","$3.30")
-Z2_Member <- c("$0.00","$0.00")
-
-comparison <- data.frame(rideable,Z1_Casual,Z1_Member,Z2_Casual,Z2_Member)
-
-comparison %>%
-  select(rideable,everything()) %>%
-  arrange(desc(rideable)) %>%
-  kable(col.names = c("","Casual","Member","Casual","Member")) %>%
-  column_spec(c(1:5), border_right = T) %>%
-  kable_styling(bootstrap_options = "striped", full_width = FALSE) %>%
-  collapse_rows(columns = 1) %>%
-    add_header_above(c(" " = 1, "Z1" = 2, "Z2" = 2))
-```
-
-Z2 riders have no cost difference between an electric or classic bike, and so use the higher end option of e-bikes more frequently. Z1 riders may decide to take a bike ride, and having locked in that decision now consider cost, find e-bikes too expensive, and take a classic bike instead.
-
-Z1 members receive a strong discount on e-bike use when compared with Z1 casuals, but still use e-bikes less. This could be that members take more bike rides per-week, and thus the yearly cost of e-bike use for an individual is higher for members than casuals. For verification of this hypothesis, data on how often a given individual takes rides is needed. 
+An alternative explanation could be that members take more bike rides per-week, and thus the yearly cost of e-bike use for an individual in Z1 is higher for members than casuals. For verification of this hypothesis, data on how often a given individual takes rides is needed. 
 
 People who rent e-bikes ride 18% further than those who do not, but ride distance is a much smaller factor on e-bike use than the relative cost of e-bike vs. classic.
 
@@ -456,7 +366,7 @@ Since membership is a flat yearly fee for rides below a certain duration, its ma
 Other information about individuals like occupation, age, residence, yearly earnings, and transportation mode habits could be used to better profile customer segments and identify patterns and needs. One of the key issues for converting casuals to members is knowing if a casual is a resident who could use a membership, or an out-of-towner who would not buy a membership, no matter their casual use patterns. Separating resident casuals from nonresident casuals would be key in any targeted marketing effort, and without individualized data this cannot be done.
 
 ### Individual bike data
-Ebikes may be so popular that their actual use is limited by the number of them in circulation. With individual bicycle data, the uptime per bike could be found, and a better sense of e-bike popularity established beyond current data. Knowing other information like locked vs. docked e-bike use could help identify whether docking availability may act as a confounding variable. Without this crucial information, no conclusion can be made as to member/casual e-bike preference.
+E-bikes may be so popular that their actual use is limited by the number of them in circulation. With individual bicycle data, the up time per bike could be found, and a better sense of e-bike popularity established beyond current data. Knowing other information like locked vs. docked e-bike use could help identify whether docking availability may act as a confounding variable. Without this crucial information, no conclusion can be made as to member/casual e-bike preference.
 
 
 
