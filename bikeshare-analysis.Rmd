@@ -1608,4 +1608,59 @@ Since membership is a flat yearly fee for rides below a certain duration, its ma
 Other information about individuals like occupation, age, residence, yearly earnings, and transportation mode habits could be used to more precisely target advertising and identify customer segments and needs. One of the key issues for converting casuals to members is knowing if a casual is a resident who could use a membership, or an out-of-towner who would not buy a membership, no matter their casual use patterns. Separating resident casuals from nonresident casuals would be key in any targeted marketing effort, and without individualized data this cannot be done.
 
 
+______________________________________________ ## V1.0 report
 
+### Revisiting Geodata
+
+Getting map
+```{r}
+register_google(key = "AIzaSyBn_zK5VR2wVX7BQy_-k3r3qCyy3JkuZnM")
+
+map <- get_googlemap(center = c(lon = -87.7104663, lat = 41.9018514),
+                      zoom = 10,
+                      maptype = "terrain",
+                      color = "color")
+```
+Need a sample size to make the following calc run smoother
+* CL = 99%
+* CI = .25%
+* sample size = 252926
+
+
+Creating density map
+```{r}
+lats <- c(41.6,42.1)
+lons <- c(-87.875,-87.5)
+no_margin <- c(0,0)
+
+sample <- sample_n(bikeshare_v17,252926)
+
+ggmap(map) +
+  stat_density2d(data = sample, aes(x=start_lng, y=start_lat, fill = ..level..), 
+                 alpha = .25,
+                 size = .01,
+                 bins = 100, 
+                 geom = "polygon") +
+  scale_x_continuous(limits = lons, expand = no_margin) +
+  scale_y_continuous(limits = lats, expand = no_margin) +
+    theme_ipsum()
+
+```
+
+Creating map with group labels
+```{r}
+install.packages("ggforce")
+library(ggforce) 
+
+cluster <- filter(sample, area != "Ev_nocollege" & area != "Z2_nocollege")
+
+ggmap(map) +
+  geom_point(data = sample, aes(x=start_lng, y=start_lat,color = area)) +
+  geom_mark_ellipse(data = cluster,
+                    aes(x = start_lng, y = start_lat, 
+                        fill = area,
+                        label = area)) +
+  
+  scale_x_continuous(limits = lons, expand = no_margin) +
+  scale_y_continuous(limits = lats, expand = no_margin)
+```
