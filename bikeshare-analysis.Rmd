@@ -1651,16 +1651,38 @@ Creating map with group labels
 ```{r}
 install.packages("ggforce")
 library(ggforce) 
+```
 
+```{r}
 cluster <- filter(sample, area != "Ev_nocollege" & area != "Z2_nocollege")
 
 ggmap(map) +
   geom_point(data = sample, aes(x=start_lng, y=start_lat,color = area)) +
-  geom_mark_ellipse(data = cluster,
-                    aes(x = start_lng, y = start_lat, 
-                        fill = area,
-                        label = area)) +
   
   scale_x_continuous(limits = lons, expand = no_margin) +
   scale_y_continuous(limits = lats, expand = no_margin)
+
+fun_peak <- function(x) { ## this function finds the corresponding x value for a max y value of the 
+  d <- density(x)         ## density of a data frame
+  d$x[which.max(d$y)]
+}
+
+sample %>%
+
+  mutate(ev_vs = case_when(area == "Z1" ~ "Chicago",
+                           area == "Ev_nocollege" ~ "Ev_nocollege",
+                           area == "Ev_NW_College" ~ "Ev_NW_College")) %>%
+  filter(ride_length_min < 46.4,
+         speed_mph != 0,
+         ev_vs == "Chicago" | ev_vs == "Ev_nocollege" | ev_vs == "Ev_NW_College") %>%
+  group_by(ev_vs) %>%
+  summarise(group_count = n(),
+            member_rate = percent(sum(member_casual == "member")/n()),
+            ebike_freq = percent(sum(rideable_type == "electric_bike")/n()),
+            mean_speed = round(mean(speed_mph, na.rm = TRUE),2),
+            mean_ride_time = round(mean(ride_length_min),2),
+            mean_ride_distance = round(mean(ride_ml, na.rm = TRUE),2),
+            peak_rl = round(fun_peak(ride_length_min),2)) %>%
+  mutate(group_freq = percent(group_count/sum(group_count))) %>%
+  relocate(group_freq, .after = group_count)
 ```
