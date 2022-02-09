@@ -1646,22 +1646,8 @@ ggmap(map) +
     theme_ipsum()
 
 ```
-
-Creating map with group labels
+Summary
 ```{r}
-install.packages("ggforce")
-library(ggforce) 
-```
-
-```{r}
-cluster <- filter(sample, area != "Ev_nocollege" & area != "Z2_nocollege")
-
-ggmap(map) +
-  geom_point(data = sample, aes(x=start_lng, y=start_lat,color = area)) +
-  
-  scale_x_continuous(limits = lons, expand = no_margin) +
-  scale_y_continuous(limits = lats, expand = no_margin)
-
 fun_peak <- function(x) { ## this function finds the corresponding x value for a max y value of the 
   d <- density(x)         ## density of a data frame
   d$x[which.max(d$y)]
@@ -1686,3 +1672,42 @@ sample %>%
   mutate(group_freq = percent(group_count/sum(group_count))) %>%
   relocate(group_freq, .after = group_count)
 ```
+
+Creating map with group labels
+```{r}
+install.packages("ggforce")
+library(ggforce) 
+```
+
+```{r}
+cluster <- filter(sample, area != "Ev_nocollege" & area != "Z2_nocollege")
+
+ggmap(map) +
+  geom_polygon(data = sample, 
+               aes(x=start_lng, y=start_lat,group = area),
+               alpha = 0.5,
+               size = 0) +
+  
+  scale_x_continuous(limits = lons, expand = no_margin) +
+  scale_y_continuous(limits = lats, expand = no_margin)
+```
+
+ggmap seems tough to work with, time to try leaflet
+
+Packages
+```{r}
+install.packages("leaflet")
+library(leaflet)
+```
+
+Mapping
+```{r}
+leaflet() %>%
+  addTiles(providers$CartoDB.Positron) %>%
+  setView(lng = -87.7104663, lat = 41.9018514, zoom = 10)
+```
+Checking providers
+```{r}
+providers
+```
+
