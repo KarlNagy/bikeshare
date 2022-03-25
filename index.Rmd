@@ -136,7 +136,6 @@ ggplot(aes(x=day_name_2,
        caption = "Data: Oct-2020 to Oct-2021") +
   theme_ipsum()
 
-
 ```
  
 Members use bikes more during the weekday than casuals, who prefer the weekend. This is likely due to members using the bikes for work/school, and casuals for pleasure. The trend is especially prominent in the 'Hyde_park` cluster around the university campus, where students have reason not only for home-work-home transit, but multiple short trips from class to class, nearby restaurants, and study locations. It is worth mentioning that without individual data to confirm how many trips per person are taken per day or more detailed individual information to confirm a lifestyle pattern, this hypothesis can only go so far.
