@@ -51,6 +51,7 @@ install.packages("hrbrthemes", repos='http://cran.us.r-project.org')
 install.packages("googledrive", repos='http://cran.us.r-project.org')
 install.packages("kableExtra", repos='http://cran.us.r-project.org')
 install.packages("prettydoc", repos='http://cran.us.r-project.org')
+install.packages("here", repos='http://cran.us.r-project.org' )
 ```
 
 ```{r, echo = TRUE}
